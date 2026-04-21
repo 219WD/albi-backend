@@ -1,0 +1,16 @@
+name: Welcome Scheduler
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  trigger-welcome-flow:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger welcome flow
+        run: |
+          curl --fail-with-body --show-error --silent \
+            -X POST "${{ secrets.WELCOME_PROCESS_URL }}" \
+            -H "Authorization: Bearer ${{ secrets.WELCOME_PROCESS_TOKEN }}"
