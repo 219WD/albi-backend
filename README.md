@@ -5,6 +5,7 @@ Backend Express para Albiero, preparado para deploy en Vercel Hobby con schedule
 ## Endpoints
 
 - `GET /health`
+- `POST /meta/capi`
 - `POST /api/welcome/process`
 - `POST /api/welcome/process?dryRun=true`
 - `GET /unsubscribe?email=...`
@@ -24,6 +25,9 @@ Crear las variables del archivo `.env` tambien en Vercel:
 - `GOOGLE_SERVICE_ACCOUNT_JSON` o, alternativamente, `GOOGLE_CLIENT_EMAIL` + `GOOGLE_PRIVATE_KEY`
 - `GOOGLE_CLIENT_EMAIL`
 - `GOOGLE_PRIVATE_KEY`
+- `META_PIXEL_ID`
+- `META_ACCESS_TOKEN`
+- `META_TEST_EVENT_CODE` (opcional, solo para probar eventos en Meta)
 
 ## Credenciales de Google en Vercel
 

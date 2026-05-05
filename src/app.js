@@ -6,17 +6,29 @@ import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 
 import analyticsRoutes from './routes/analytics.js';
+import metaCapiRoutes from './routes/metaCapi.js';
 import unsubscribeRoutes from './routes/unsubscribe.js';
 import welcomeRoutes from './routes/welcome.js';
 
 const app = express();
+const allowedOrigins = (process.env.FRONTEND_URLS || process.env.FRONTEND_URL || 'http://localhost:5173')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
 
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: allowedOrigins,
   methods: ['GET', 'POST'],
 }));
 app.use(express.json());
+
+app.use('/meta', rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  message: { error: 'Demasiados eventos, espera un minuto.' },
+}));
+app.use('/meta', metaCapiRoutes);
 
 app.use('/api', rateLimit({
   windowMs: 60 * 1000,
