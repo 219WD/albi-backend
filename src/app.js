@@ -11,16 +11,31 @@ import unsubscribeRoutes from './routes/unsubscribe.js';
 import welcomeRoutes from './routes/welcome.js';
 
 const app = express();
-const allowedOrigins = (process.env.FRONTEND_URLS || process.env.FRONTEND_URL || 'http://localhost:5173')
+const defaultOrigins = [
+  'http://localhost:5173',
+  'https://albiero.com.ar',
+  'https://www.albiero.com.ar',
+];
+const allowedOrigins = (process.env.FRONTEND_URLS || process.env.FRONTEND_URL || defaultOrigins.join(','))
   .split(',')
   .map(origin => origin.trim())
   .filter(Boolean);
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`Origen no permitido por CORS: ${origin}`));
+  },
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 204,
+};
 
 app.use(helmet());
-app.use(cors({
-  origin: allowedOrigins,
-  methods: ['GET', 'POST'],
-}));
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use(express.json());
 
 app.use('/meta', rateLimit({
