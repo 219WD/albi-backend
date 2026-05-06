@@ -37,6 +37,7 @@ app.use(helmet());
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 app.use(express.json());
+app.use('/meta', express.text({ type: 'text/plain' }));
 
 app.use('/meta', rateLimit({
   windowMs: 60 * 1000,

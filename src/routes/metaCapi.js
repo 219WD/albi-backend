@@ -24,6 +24,7 @@ const getClientIp = (req) => {
 
 router.post('/capi', async (req, res, next) => {
   try {
+    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
     const pixelId = process.env.META_PIXEL_ID;
     const accessToken = process.env.META_ACCESS_TOKEN;
 
@@ -38,7 +39,7 @@ router.post('/capi', async (req, res, next) => {
       custom_data: customData,
       fbp,
       fbc,
-    } = req.body || {};
+    } = body;
 
     if (!eventName) {
       return res.status(400).json({ error: 'Falta event_name' });
