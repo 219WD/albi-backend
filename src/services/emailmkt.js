@@ -1,5 +1,7 @@
 import '../env.js';
+import mongoose from 'mongoose';
 import nodemailer from 'nodemailer';
+import CampaignSend from '../models/CampaignSend.js';
 import { getSheetRows } from './sheets.js';
 
 function getEmailConfig() {
@@ -35,6 +37,16 @@ const buildUnsubscribeUrl = (email) => {
 };
 
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+
+async function ensureMongoConnection() {
+  if (mongoose.connection.readyState === 1) return;
+
+  if (!process.env.MONGO_URI) {
+    throw new Error('Falta MONGO_URI para guardar historial de campanas.');
+  }
+
+  await mongoose.connect(process.env.MONGO_URI);
+}
 
 function getNewsletterRecipients(rows) {
   const seen = new Set();
@@ -85,15 +97,21 @@ function buildCampaignHtml({ recipient, campaign }) {
 }
 
 function validateCampaign(campaign = {}) {
+  const campaignId = String(campaign.campaignId || '').trim();
   const subject = String(campaign.subject || '').trim();
   const title = String(campaign.title || '').trim();
   const content = String(campaign.content || '').trim();
 
+  if (!campaignId) throw new Error('Falta el ID de campana.');
+  if (!/^[a-zA-Z0-9_-]{3,80}$/.test(campaignId)) {
+    throw new Error('El ID de campana solo puede tener letras, numeros, guiones y guion bajo.');
+  }
   if (!subject) throw new Error('Falta el asunto.');
   if (!title) throw new Error('Falta el titulo.');
   if (!content) throw new Error('Falta el contenido.');
 
   return {
+    campaignId,
     subject,
     title,
     preheader: String(campaign.preheader || '').trim(),
@@ -102,14 +120,36 @@ function validateCampaign(campaign = {}) {
   };
 }
 
-export async function previewEmailMarketingRecipients() {
+async function filterAlreadySentRecipients(campaignId, recipients) {
+  await ensureMongoConnection();
+
+  const sentRows = await CampaignSend.find({
+    campaignId,
+    email: { $in: recipients.map((recipient) => recipient.email) },
+    status: 'sent',
+  }).select('email').lean();
+  const sentEmails = new Set(sentRows.map((row) => row.email));
+
+  return {
+    sentEmails,
+    eligibleRecipients: recipients.filter((recipient) => !sentEmails.has(recipient.email)),
+  };
+}
+
+export async function previewEmailMarketingRecipients(campaignId = '') {
   const rows = await getSheetRows();
   const recipients = getNewsletterRecipients(rows);
+  const normalizedCampaignId = String(campaignId || '').trim();
+  const filtered = normalizedCampaignId
+    ? await filterAlreadySentRecipients(normalizedCampaignId, recipients)
+    : { sentEmails: new Set(), eligibleRecipients: recipients };
 
   return {
     totalRows: rows.length,
     recipients: recipients.length,
-    preview: recipients.slice(0, 15),
+    alreadySent: filtered.sentEmails.size,
+    eligible: filtered.eligibleRecipients.length,
+    preview: filtered.eligibleRecipients.slice(0, 15),
   };
 }
 
@@ -122,17 +162,21 @@ export async function sendEmailMarketingCampaign(campaignInput = {}) {
   }
 
   const rows = await getSheetRows();
-  const recipients = getNewsletterRecipients(rows);
+  const allRecipients = getNewsletterRecipients(rows);
+  const { sentEmails, eligibleRecipients } = await filterAlreadySentRecipients(campaign.campaignId, allRecipients);
   const transporter = createTransporter();
   const concurrency = Math.max(1, Math.min(Number(process.env.EMAILMKT_CONCURRENCY || 3), 5));
   const result = {
-    recipients: recipients.length,
+    campaignId: campaign.campaignId,
+    recipients: allRecipients.length,
+    alreadySent: sentEmails.size,
+    eligible: eligibleRecipients.length,
     sent: 0,
     failed: [],
   };
 
-  for (let index = 0; index < recipients.length; index += concurrency) {
-    const batch = recipients.slice(index, index + concurrency);
+  for (let index = 0; index < eligibleRecipients.length; index += concurrency) {
+    const batch = eligibleRecipients.slice(index, index + concurrency);
 
     await Promise.all(batch.map(async (recipient) => {
       try {
@@ -142,8 +186,31 @@ export async function sendEmailMarketingCampaign(campaignInput = {}) {
           subject: campaign.subject,
           html: buildCampaignHtml({ recipient, campaign }),
         });
+        await CampaignSend.updateOne(
+          { campaignId: campaign.campaignId, email: recipient.email },
+          {
+            $set: {
+              subject: campaign.subject,
+              status: 'sent',
+              error: '',
+              sentAt: new Date(),
+            },
+          },
+          { upsert: true }
+        );
         result.sent += 1;
       } catch (error) {
+        await CampaignSend.updateOne(
+          { campaignId: campaign.campaignId, email: recipient.email },
+          {
+            $set: {
+              subject: campaign.subject,
+              status: 'failed',
+              error: error.message,
+            },
+          },
+          { upsert: true }
+        ).catch(() => {});
         result.failed.push({
           email: recipient.email,
           message: error.message,

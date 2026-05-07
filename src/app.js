@@ -59,6 +59,8 @@ app.use('/api', rateLimit({
   message: { error: 'Demasiadas solicitudes, espera un minuto.' },
 }));
 
+app.use('/api/emailmkt', emailmktRoutes);
+
 app.use('/api', (req, res, next) => {
   const auth = req.headers.authorization || '';
   const secret = process.env.ANALYTICS_SECRET;
@@ -71,7 +73,6 @@ app.use('/api', (req, res, next) => {
 });
 
 app.use('/api/analytics', analyticsRoutes);
-app.use('/api/emailmkt', emailmktRoutes);
 app.use('/api/welcome', welcomeRoutes);
 app.use('/', unsubscribeRoutes);
 
@@ -85,7 +86,11 @@ app.use((_req, res) => {
 
 app.use((err, _req, res, _next) => {
   console.error('[Error]', err.message);
-  res.status(500).json({ error: 'Error interno del servidor' });
+  const statusCode = Number(err.statusCode || err.status || 500);
+  const safeStatusCode = statusCode >= 400 && statusCode < 600 ? statusCode : 500;
+  res.status(safeStatusCode).json({
+    error: safeStatusCode >= 500 ? 'Error interno del servidor' : err.message,
+  });
 });
 
 export default app;
