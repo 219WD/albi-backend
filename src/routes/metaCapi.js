@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { appendLeadEventToSheet } from '../services/sheets.js';
 
 const router = Router();
 const GRAPH_API_VERSION = 'v21.0';
@@ -20,6 +21,20 @@ const getClientIp = (req) => {
   }
 
   return req.headers['x-real-ip'] || req.socket?.remoteAddress;
+};
+
+const isLeadEvent = (eventName) => String(eventName || '').endsWith('FormularioEnviado_WhatsApp');
+
+const inferProductFromEvent = (eventName) => {
+  const name = String(eventName || '');
+
+  if (name.startsWith('Alarmas_')) return 'Alarmas';
+  if (name.startsWith('Camaras_')) return 'Camaras';
+  if (name.startsWith('GPS_')) return 'GPS';
+  if (name.startsWith('Incendio_')) return 'Incendio';
+  if (name.startsWith('SeguridadIntegral_')) return 'SeguridadIntegral';
+
+  return 'KitAlarmaCamara';
 };
 
 router.post('/capi', async (req, res, next) => {
@@ -74,6 +89,24 @@ router.post('/capi', async (req, res, next) => {
     });
 
     const result = await metaResponse.json().catch(() => ({}));
+
+    if (isLeadEvent(eventName)) {
+      try {
+        await appendLeadEventToSheet({
+          eventName,
+          email: customData?.email,
+          nombre: customData?.nombre,
+          codigo: customData?.codigo,
+          tipo: customData?.tipo,
+          ubicacion: customData?.ubicacion,
+          sistema: customData?.sistema,
+          producto: customData?.producto || inferProductFromEvent(eventName),
+          bienvenidaEnviada: customData?.bienvenida_enviada,
+        });
+      } catch (sheetError) {
+        console.error('[Sheets] No se pudo guardar el lead', sheetError);
+      }
+    }
 
     if (!metaResponse.ok) {
       console.error('[Meta CAPI]', result);

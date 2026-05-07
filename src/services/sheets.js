@@ -95,6 +95,41 @@ export async function getSheetRows() {
   return snapshot.rows;
 }
 
+export async function appendLeadEventToSheet(lead = {}) {
+  const { headers, headerIndexes } = await getSheetSnapshot();
+  const now = new Date().toISOString();
+  const row = Array.from({ length: headers.length }, () => '');
+
+  const setValue = (header, value) => {
+    const index = headerIndexes[header];
+    if (index !== undefined && value !== undefined && value !== null) {
+      row[index] = value;
+    }
+  };
+
+  setValue('marca_temporal', now);
+  setValue('timestamp', now);
+  setValue('event_name', lead.eventName);
+  setValue('email', lead.email || '-');
+  setValue('nombre', lead.nombre || '-');
+  setValue('codigo', lead.codigo || '-');
+  setValue('tipo', lead.tipo);
+  setValue('ubicacion', lead.ubicacion);
+  setValue('sistema', lead.sistema);
+  setValue('producto', lead.producto);
+  setValue('bienvenida_enviada', lead.bienvenidaEnviada || '');
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: process.env.SPREADSHEET_ID,
+    range: `${SHEET_NAME}!A:${toColumnLetter(Math.max(headers.length - 1, 0))}`,
+    valueInputOption: 'USER_ENTERED',
+    insertDataOption: 'INSERT_ROWS',
+    requestBody: {
+      values: [row],
+    },
+  });
+}
+
 export function getPendingWelcomeRows(rows) {
   const seenEmails = new Set();
   const isMeaningfulValue = (value) => {
