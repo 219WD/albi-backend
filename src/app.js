@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 
 import analyticsRoutes from './routes/analytics.js';
+import emailmktRoutes from './routes/emailmkt.js';
 import metaCapiRoutes from './routes/metaCapi.js';
 import unsubscribeRoutes from './routes/unsubscribe.js';
 import welcomeRoutes from './routes/welcome.js';
@@ -70,6 +71,7 @@ app.use('/api', (req, res, next) => {
 });
 
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/emailmkt', emailmktRoutes);
 app.use('/api/welcome', welcomeRoutes);
 app.use('/', unsubscribeRoutes);
 
