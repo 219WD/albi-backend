@@ -153,6 +153,72 @@ export async function previewEmailMarketingRecipients(campaignId = '') {
   };
 }
 
+export async function getEmailMarketingCampaigns() {
+  await ensureMongoConnection();
+
+  const campaigns = await CampaignSend.aggregate([
+    {
+      $group: {
+        _id: '$campaignId',
+        subject: { $last: '$subject' },
+        total: { $sum: 1 },
+        sent: { $sum: { $cond: [{ $eq: ['$status', 'sent'] }, 1, 0] } },
+        failed: { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } },
+        firstSentAt: { $min: '$sentAt' },
+        lastSentAt: { $max: '$sentAt' },
+      },
+    },
+    { $sort: { lastSentAt: -1 } },
+    { $limit: 100 },
+  ]);
+
+  return campaigns.map((campaign) => ({
+    campaignId: campaign._id,
+    subject: campaign.subject || '',
+    total: campaign.total,
+    sent: campaign.sent,
+    failed: campaign.failed,
+    firstSentAt: campaign.firstSentAt,
+    lastSentAt: campaign.lastSentAt,
+  }));
+}
+
+export async function getEmailMarketingCampaignDetail(campaignId = '') {
+  await ensureMongoConnection();
+
+  const normalizedCampaignId = String(campaignId || '').trim();
+
+  if (!normalizedCampaignId) {
+    throw new Error('Falta el ID de campana.');
+  }
+
+  const rows = await CampaignSend.find({ campaignId: normalizedCampaignId })
+    .sort({ sentAt: -1, updatedAt: -1 })
+    .limit(300)
+    .select('campaignId email subject status error sentAt updatedAt')
+    .lean();
+
+  const summary = rows.reduce((acc, row) => {
+    acc.total += 1;
+    if (row.status === 'sent') acc.sent += 1;
+    if (row.status === 'failed') acc.failed += 1;
+    return acc;
+  }, { total: 0, sent: 0, failed: 0 });
+
+  return {
+    campaignId: normalizedCampaignId,
+    ...summary,
+    recipients: rows.map((row) => ({
+      email: row.email,
+      subject: row.subject || '',
+      status: row.status,
+      error: row.error || '',
+      sentAt: row.sentAt,
+      updatedAt: row.updatedAt,
+    })),
+  };
+}
+
 export async function sendEmailMarketingCampaign(campaignInput = {}) {
   const campaign = validateCampaign(campaignInput);
   const { emailUser, emailPass } = getEmailConfig();

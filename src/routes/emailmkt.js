@@ -6,6 +6,8 @@ import {
   requireEmailMktAdmin,
 } from '../services/adminAuth.js';
 import {
+  getEmailMarketingCampaignDetail,
+  getEmailMarketingCampaigns,
   previewEmailMarketingRecipients,
   sendEmailMarketingCampaign,
 } from '../services/emailmkt.js';
@@ -52,6 +54,24 @@ router.get('/recipients', async (req, res, next) => {
   try {
     const result = await previewEmailMarketingRecipients(req.query.campaignId);
     return res.json({ ok: true, ...result });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/campaigns', async (_req, res, next) => {
+  try {
+    const campaigns = await getEmailMarketingCampaigns();
+    return res.json({ ok: true, campaigns });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/campaigns/:campaignId', async (req, res, next) => {
+  try {
+    const campaign = await getEmailMarketingCampaignDetail(req.params.campaignId);
+    return res.json({ ok: true, campaign });
   } catch (error) {
     return next(error);
   }
