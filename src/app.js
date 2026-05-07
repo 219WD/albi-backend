@@ -16,13 +16,17 @@ const defaultOrigins = [
   'https://albiero.com.ar',
   'https://www.albiero.com.ar',
 ];
-const allowedOrigins = (process.env.FRONTEND_URLS || process.env.FRONTEND_URL || defaultOrigins.join(','))
+const envOrigins = (process.env.FRONTEND_URLS || process.env.FRONTEND_URL || '')
   .split(',')
   .map(origin => origin.trim())
   .filter(Boolean);
+const allowedOrigins = Array.from(new Set([...defaultOrigins, ...envOrigins]))
+  .map(origin => origin.replace(/\/$/, ''));
 const corsOptions = {
   origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
+    const normalizedOrigin = String(origin || '').replace(/\/$/, '');
+
+    if (!origin || allowedOrigins.includes(normalizedOrigin)) {
       return callback(null, true);
     }
 
@@ -33,7 +37,9 @@ const corsOptions = {
   optionsSuccessStatus: 204,
 };
 
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 app.use(express.json());
