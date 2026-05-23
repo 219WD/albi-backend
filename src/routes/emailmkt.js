@@ -73,15 +73,6 @@ router.get('/campaigns', async (_req, res, next) => {
   }
 });
 
-router.get('/campaigns/:campaignId', async (req, res, next) => {
-  try {
-    const campaign = await getEmailMarketingCampaignDetail(req.params.campaignId);
-    return res.json({ ok: true, campaign });
-  } catch (error) {
-    return next(error);
-  }
-});
-
 router.get('/templates', async (_req, res, next) => {
   try {
     const templates = await getEmailMarketingTemplates();
@@ -122,6 +113,15 @@ router.delete('/templates/:templateId', async (req, res, next) => {
   try {
     const template = await deleteEmailMarketingTemplate(req.params.templateId);
     return res.json({ ok: true, template });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/campaigns/:campaignId', async (req, res, next) => {
+  try {
+    const campaign = await getEmailMarketingCampaignDetail(req.params.campaignId);
+    return res.json({ ok: true, campaign });
   } catch (error) {
     return next(error);
   }
