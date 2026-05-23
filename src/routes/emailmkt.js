@@ -6,10 +6,15 @@ import {
   requireEmailMktAdmin,
 } from '../services/adminAuth.js';
 import {
+  createEmailMarketingTemplate,
+  deleteEmailMarketingTemplate,
   getEmailMarketingCampaignDetail,
   getEmailMarketingCampaigns,
+  getEmailMarketingTemplate,
+  getEmailMarketingTemplates,
   previewEmailMarketingRecipients,
   sendEmailMarketingCampaign,
+  updateEmailMarketingTemplate,
 } from '../services/emailmkt.js';
 
 const router = Router();
@@ -72,6 +77,51 @@ router.get('/campaigns/:campaignId', async (req, res, next) => {
   try {
     const campaign = await getEmailMarketingCampaignDetail(req.params.campaignId);
     return res.json({ ok: true, campaign });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/templates', async (_req, res, next) => {
+  try {
+    const templates = await getEmailMarketingTemplates();
+    return res.json({ ok: true, templates });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/templates/:templateId', async (req, res, next) => {
+  try {
+    const template = await getEmailMarketingTemplate(req.params.templateId);
+    return res.json({ ok: true, template });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/templates', async (req, res, next) => {
+  try {
+    const template = await createEmailMarketingTemplate(req.body || {}, req.admin || {});
+    return res.status(201).json({ ok: true, template });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.put('/templates/:templateId', async (req, res, next) => {
+  try {
+    const template = await updateEmailMarketingTemplate(req.params.templateId, req.body || {}, req.admin || {});
+    return res.json({ ok: true, template });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.delete('/templates/:templateId', async (req, res, next) => {
+  try {
+    const template = await deleteEmailMarketingTemplate(req.params.templateId);
+    return res.json({ ok: true, template });
   } catch (error) {
     return next(error);
   }

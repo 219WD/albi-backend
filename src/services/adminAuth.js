@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import mongoose from 'mongoose';
 import EmailMktUser from '../models/EmailMktUser.js';
 
-const TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
+const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PASSWORD_KEYLEN = 64;
 const PASSWORD_RANGOS = new Set(['emailmkt', 'admin', 'superadmin']);
 

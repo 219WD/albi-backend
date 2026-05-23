@@ -2,6 +2,7 @@ import '../env.js';
 import mongoose from 'mongoose';
 import nodemailer from 'nodemailer';
 import CampaignSend from '../models/CampaignSend.js';
+import EmailTemplate from '../models/EmailTemplate.js';
 import { getSheetRows } from './sheets.js';
 
 function getEmailConfig() {
@@ -118,6 +119,112 @@ function validateCampaign(campaign = {}) {
     content,
     buttons: normalizeButtons(campaign.buttons),
   };
+}
+
+function normalizeTemplatePayload(template = {}) {
+  const name = String(template.name || '').trim();
+  const subject = String(template.subject || '').trim();
+  const title = String(template.title || '').trim();
+  const content = String(template.content || '').trim();
+
+  if (!name) throw new Error('Falta el nombre de la plantilla.');
+  if (name.length < 3 || name.length > 90) {
+    throw new Error('El nombre de la plantilla debe tener entre 3 y 90 caracteres.');
+  }
+  if (!subject) throw new Error('Falta el asunto de la plantilla.');
+  if (!title) throw new Error('Falta el titulo de la plantilla.');
+  if (!content) throw new Error('Falta el contenido de la plantilla.');
+
+  return {
+    name,
+    subject,
+    title,
+    preheader: String(template.preheader || '').trim(),
+    content,
+    buttons: normalizeButtons(template.buttons),
+  };
+}
+
+const serializeTemplate = (template) => ({
+  id: String(template._id),
+  name: template.name || '',
+  subject: template.subject || '',
+  title: template.title || '',
+  preheader: template.preheader || '',
+  content: template.content || '',
+  buttons: normalizeButtons(template.buttons || []),
+  createdBy: template.createdBy || '',
+  updatedBy: template.updatedBy || '',
+  createdAt: template.createdAt,
+  updatedAt: template.updatedAt,
+});
+
+export async function getEmailMarketingTemplates() {
+  await ensureMongoConnection();
+
+  const templates = await EmailTemplate.find({})
+    .sort({ updatedAt: -1 })
+    .limit(200)
+    .lean();
+
+  return templates.map(serializeTemplate);
+}
+
+export async function getEmailMarketingTemplate(templateId = '') {
+  await ensureMongoConnection();
+
+  const template = await EmailTemplate.findById(String(templateId || '').trim()).lean();
+  if (!template) throw new Error('Plantilla no encontrada.');
+
+  return serializeTemplate(template);
+}
+
+export async function createEmailMarketingTemplate(templateInput = {}, admin = {}) {
+  await ensureMongoConnection();
+
+  const payload = normalizeTemplatePayload(templateInput);
+  const username = admin.username || admin.email || '';
+
+  const existing = await EmailTemplate.findOne({ name: payload.name }).select('_id').lean();
+  if (existing) throw new Error('Ya existe una plantilla con ese nombre.');
+
+  const template = await EmailTemplate.create({
+    ...payload,
+    createdBy: username,
+    updatedBy: username,
+  });
+
+  return serializeTemplate(template.toObject());
+}
+
+export async function updateEmailMarketingTemplate(templateId = '', templateInput = {}, admin = {}) {
+  await ensureMongoConnection();
+
+  const payload = normalizeTemplatePayload(templateInput);
+  const id = String(templateId || '').trim();
+  const username = admin.username || admin.email || '';
+
+  const existing = await EmailTemplate.findOne({ name: payload.name, _id: { $ne: id } }).select('_id').lean();
+  if (existing) throw new Error('Ya existe otra plantilla con ese nombre.');
+
+  const template = await EmailTemplate.findByIdAndUpdate(
+    id,
+    { $set: { ...payload, updatedBy: username } },
+    { new: true, runValidators: true }
+  ).lean();
+
+  if (!template) throw new Error('Plantilla no encontrada.');
+
+  return serializeTemplate(template);
+}
+
+export async function deleteEmailMarketingTemplate(templateId = '') {
+  await ensureMongoConnection();
+
+  const result = await EmailTemplate.findByIdAndDelete(String(templateId || '').trim()).lean();
+  if (!result) throw new Error('Plantilla no encontrada.');
+
+  return serializeTemplate(result);
 }
 
 async function filterAlreadySentRecipients(campaignId, recipients) {
