@@ -70,6 +70,25 @@ const stripMetaCustomData = (customData = {}) => {
   return safeCustomData;
 };
 
+const needsValueCurrency = (eventName = '') => {
+  const name = String(eventName || '');
+  return name.includes('Paso3_') || name === 'Paso3_SistemaSeleccionado' || name.endsWith('FormularioEnviado_WhatsApp');
+};
+
+const normalizeValueCurrency = (eventName = '', customData = {}) => {
+  if (!needsValueCurrency(eventName)) return customData || {};
+
+  const value = Number(customData?.value ?? customData?.valor_lead);
+  const currency = String(customData?.currency || customData?.currency_code || '').trim().toUpperCase();
+
+  return {
+    ...(customData || {}),
+    value: Number.isFinite(value) && value > 0 ? value : 1,
+    valor_lead: Number.isFinite(value) && value > 0 ? value : 1,
+    currency: /^[A-Z]{3}$/.test(currency) ? currency : 'ARS',
+  };
+};
+
 const inferProductFromEvent = (eventName) => {
   const name = String(eventName || '');
 
@@ -107,6 +126,8 @@ router.post('/capi', async (req, res, next) => {
       return res.status(400).json({ error: 'Falta event_name' });
     }
 
+    const normalizedCustomData = normalizeValueCurrency(eventName, customData);
+
     const event = cleanObject({
       event_name: String(eventName),
       event_time: Math.floor(Date.now() / 1000),
@@ -118,9 +139,9 @@ router.post('/capi', async (req, res, next) => {
         client_user_agent: req.headers['user-agent'],
         fbp,
         fbc,
-        ...buildAdvancedUserData({ customData, userData: browserUserData }),
+        ...buildAdvancedUserData({ customData: normalizedCustomData, userData: browserUserData }),
       }),
-      custom_data: cleanObject(stripMetaCustomData(customData)),
+      custom_data: cleanObject(stripMetaCustomData(normalizedCustomData)),
     });
 
     const payload = { data: [event] };
@@ -143,14 +164,14 @@ router.post('/capi', async (req, res, next) => {
       try {
         await appendLeadEventToSheet({
           eventName,
-          email: customData?.email,
-          nombre: customData?.nombre,
-          codigo: customData?.codigo,
-          tipo: customData?.tipo,
-          ubicacion: customData?.ubicacion,
-          sistema: customData?.sistema,
-          producto: customData?.producto || inferProductFromEvent(eventName),
-          bienvenidaEnviada: customData?.bienvenida_enviada,
+          email: normalizedCustomData?.email,
+          nombre: normalizedCustomData?.nombre,
+          codigo: normalizedCustomData?.codigo,
+          tipo: normalizedCustomData?.tipo,
+          ubicacion: normalizedCustomData?.ubicacion,
+          sistema: normalizedCustomData?.sistema,
+          producto: normalizedCustomData?.producto || inferProductFromEvent(eventName),
+          bienvenidaEnviada: normalizedCustomData?.bienvenida_enviada,
         });
       } catch (sheetError) {
         console.error('[Sheets] No se pudo guardar el lead', sheetError);
