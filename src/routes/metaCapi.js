@@ -98,6 +98,7 @@ router.post('/capi', async (req, res, next) => {
       event_source_url: eventSourceUrl,
       custom_data: customData,
       user_data: browserUserData,
+      test_event_code: requestTestEventCode,
       fbp,
       fbc,
     } = body;
@@ -124,8 +125,9 @@ router.post('/capi', async (req, res, next) => {
 
     const payload = { data: [event] };
 
-    if (process.env.META_TEST_EVENT_CODE) {
-      payload.test_event_code = process.env.META_TEST_EVENT_CODE;
+    const testEventCode = String(requestTestEventCode || process.env.META_TEST_EVENT_CODE || '').trim();
+    if (testEventCode) {
+      payload.test_event_code = testEventCode;
     }
 
     const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${pixelId}/events?access_token=${encodeURIComponent(accessToken)}`;
