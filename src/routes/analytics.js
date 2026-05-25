@@ -7,9 +7,172 @@ import {
   PRODUCTOS_VALIDOS,
   PASO_LABELS,
 } from '../helpers.js';
+import { getSheetRows } from '../services/sheets.js';
 
 const router   = Router();
 const PROPERTY = () => `properties/${process.env.GA4_PROPERTY_ID}`;
+
+const RANGE_DAYS = { '7d': 7, '30d': 30, '90d': 90 };
+
+function parseSheetDate(row) {
+  const raw = row.timestamp || row.marca_temporal || row.fecha || row.created_at || '';
+  if (!raw) return null;
+
+  const directDate = new Date(raw);
+  if (!Number.isNaN(directDate.getTime())) return directDate;
+
+  const match = String(raw).match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (!match) return null;
+
+  const [, day, month, year, hour = '0', minute = '0', second = '0'] = match;
+  const fullYear = year.length === 2 ? `20${year}` : year;
+  const parsed = new Date(Number(fullYear), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getSheetDateBounds(query) {
+  if (query.range === 'custom') {
+    if (!query.from || !query.to) throw new Error('Parametros "from" y "to" requeridos para rango personalizado');
+
+    const from = new Date(`${query.from}T00:00:00`);
+    const to = new Date(`${query.to}T23:59:59.999`);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) {
+      throw new Error('Rango de fechas invalido');
+    }
+    return { from, to };
+  }
+
+  const days = RANGE_DAYS[query.range] || RANGE_DAYS['30d'];
+  const to = new Date();
+  const from = new Date(to);
+  from.setDate(from.getDate() - days + 1);
+  from.setHours(0, 0, 0, 0);
+  return { from, to };
+}
+
+function normalizeText(value) {
+  return String(value || '').trim();
+}
+
+function titleCase(value) {
+  const text = normalizeText(value);
+  if (!text || text === '-') return 'Sin dato';
+  return text.replace(/^kit\s+/i, 'Kit ').replace(/\b\w/g, letter => letter.toUpperCase());
+}
+
+function canonicalKey(value) {
+  return normalizeText(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function getField(row, field) {
+  const value = normalizeText(row[field]);
+  return value && value !== '-' ? value : 'Sin dato';
+}
+
+function countBy(rows, field, formatter = titleCase) {
+  const map = new Map();
+
+  rows.forEach((row) => {
+    const rawValue = getField(row, field);
+    const key = canonicalKey(rawValue);
+    const current = map.get(key) || { label: formatter(rawValue), count: 0 };
+    current.count += 1;
+    map.set(key, current);
+  });
+
+  const total = rows.length || 0;
+  return Array.from(map.values())
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .map(item => ({
+      ...item,
+      percent: total > 0 ? Math.round((item.count / total) * 100) : 0,
+    }));
+}
+
+function buildDailyLeads(rows) {
+  const map = new Map();
+
+  rows.forEach((row) => {
+    const parsedDate = parseSheetDate(row);
+    if (!parsedDate) return;
+
+    const key = parsedDate.toISOString().slice(0, 10);
+    const current = map.get(key) || {
+      date: key,
+      label: parsedDate.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }),
+      leads: 0,
+    };
+    current.leads += 1;
+    map.set(key, current);
+  });
+
+  return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function isLeadRow(row) {
+  const eventName = normalizeText(row.event_name);
+  if (eventName) return eventName.endsWith('FormularioEnviado_WhatsApp');
+  return Boolean(normalizeText(row.tipo) || normalizeText(row.ubicacion) || normalizeText(row.sistema));
+}
+
+function filterRowsByRange(rows, query) {
+  const { from, to } = getSheetDateBounds(query);
+  return rows.filter((row) => {
+    const parsedDate = parseSheetDate(row);
+    if (!parsedDate) return true;
+    return parsedDate >= from && parsedDate <= to;
+  });
+}
+
+router.get('/sheet-summary', async (req, res, next) => {
+  try {
+    const allRows = await getSheetRows();
+    const leadRows = filterRowsByRange(allRows.filter(isLeadRow), req.query);
+    const byTipo = countBy(leadRows, 'tipo');
+    const byUbicacion = countBy(leadRows, 'ubicacion');
+    const bySistema = countBy(leadRows, 'sistema');
+    const byProducto = countBy(leadRows, 'producto', value => normalizeText(value) || 'Sin dato');
+
+    const recentLeads = leadRows
+      .slice()
+      .sort((a, b) => (parseSheetDate(b)?.getTime() || 0) - (parseSheetDate(a)?.getTime() || 0))
+      .slice(0, 8)
+      .map(row => ({
+        fecha: parseSheetDate(row)?.toISOString() || '',
+        tipo: getField(row, 'tipo'),
+        ubicacion: getField(row, 'ubicacion'),
+        sistema: getField(row, 'sistema'),
+        producto: getField(row, 'producto'),
+        nombre: getField(row, 'nombre'),
+        email: getField(row, 'email'),
+      }));
+
+    res.json({
+      source: 'google_sheets',
+      generatedAt: new Date().toISOString(),
+      totals: {
+        leads: leadRows.length,
+        sheetRows: allRows.length,
+        ubicaciones: byUbicacion.length,
+        tipos: byTipo.length,
+      },
+      breakdowns: {
+        tipo: byTipo,
+        ubicacion: byUbicacion,
+        sistema: bySistema,
+        producto: byProducto,
+      },
+      dailyLeads: buildDailyLeads(leadRows),
+      recentLeads,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/analytics/pageviews

@@ -11,10 +11,14 @@ function hasRealEnvValue(value) {
 
 function createGoogleAuth() {
   if (hasRealEnvValue(process.env.GOOGLE_SERVICE_ACCOUNT_JSON)) {
-    return new google.auth.GoogleAuth({
-      credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON),
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
+    try {
+      return new google.auth.GoogleAuth({
+        credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON),
+        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+      });
+    } catch (error) {
+      console.warn('[Sheets] GOOGLE_SERVICE_ACCOUNT_JSON invalido, usando credenciales alternativas.');
+    }
   }
 
   if (hasRealEnvValue(process.env.GOOGLE_CLIENT_EMAIL) && hasRealEnvValue(process.env.GOOGLE_PRIVATE_KEY)) {
