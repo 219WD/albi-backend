@@ -10,6 +10,7 @@ import emailmktRoutes from './routes/emailmkt.js';
 import metaCapiRoutes from './routes/metaCapi.js';
 import unsubscribeRoutes from './routes/unsubscribe.js';
 import welcomeRoutes from './routes/welcome.js';
+import { requireEmailMktAdmin } from './services/adminAuth.js';
 
 const app = express();
 const defaultOrigins = [
@@ -65,11 +66,11 @@ app.use('/api', (req, res, next) => {
   const auth = req.headers.authorization || '';
   const secret = process.env.ANALYTICS_SECRET;
 
-  if (!secret || auth !== `Bearer ${secret}`) {
-    return res.status(401).json({ error: 'No autorizado' });
+  if (secret && auth === `Bearer ${secret}`) {
+    return next();
   }
 
-  return next();
+  return requireEmailMktAdmin(req, res, next);
 });
 
 app.use('/api/analytics', analyticsRoutes);

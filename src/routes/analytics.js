@@ -73,6 +73,37 @@ function getField(row, field) {
   return value && value !== '-' ? value : 'Sin dato';
 }
 
+function hasMeaningfulValue(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  return Boolean(normalized && normalized !== '-' && normalized !== 'n/a' && normalized !== 'sin dato');
+}
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeText(value));
+}
+
+function countNewsletterSubscribers(rows) {
+  const seenEmails = new Set();
+
+  rows.forEach((row) => {
+    const email = normalizeText(row.email).toLowerCase();
+    const bienvenida = normalizeText(row.bienvenida_enviada).toLowerCase();
+
+    if (!isValidEmail(email) || bienvenida === 'cancelado' || seenEmails.has(email)) return;
+    seenEmails.add(email);
+  });
+
+  return seenEmails.size;
+}
+
+function isCompleteLead(row) {
+  return ['tipo', 'ubicacion', 'sistema', 'producto'].every(field => hasMeaningfulValue(row[field]));
+}
+
+function percent(part, total) {
+  return total > 0 ? Math.round((part / total) * 100) : 0;
+}
+
 function countBy(rows, field, formatter = titleCase) {
   const map = new Map();
 
@@ -136,6 +167,12 @@ router.get('/sheet-summary', async (req, res, next) => {
     const byUbicacion = countBy(leadRows, 'ubicacion');
     const bySistema = countBy(leadRows, 'sistema');
     const byProducto = countBy(leadRows, 'producto', value => normalizeText(value) || 'Sin dato');
+    const withName = leadRows.filter(row => hasMeaningfulValue(row.nombre)).length;
+    const withEmail = leadRows.filter(row => isValidEmail(row.email)).length;
+    const completeLeads = leadRows.filter(isCompleteLead).length;
+    const completeContactLeads = leadRows.filter(row =>
+      isCompleteLead(row) && hasMeaningfulValue(row.nombre) && isValidEmail(row.email)
+    ).length;
 
     const recentLeads = leadRows
       .slice()
@@ -153,12 +190,24 @@ router.get('/sheet-summary', async (req, res, next) => {
 
     res.json({
       source: 'google_sheets',
+      sheetUrl: process.env.SPREADSHEET_ID
+        ? `https://docs.google.com/spreadsheets/d/${process.env.SPREADSHEET_ID}/edit`
+        : '',
       generatedAt: new Date().toISOString(),
       totals: {
         leads: leadRows.length,
         sheetRows: allRows.length,
         ubicaciones: byUbicacion.length,
         tipos: byTipo.length,
+        newsletterSubscribers: countNewsletterSubscribers(allRows),
+        withName,
+        withNamePercent: percent(withName, leadRows.length),
+        withEmail,
+        withEmailPercent: percent(withEmail, leadRows.length),
+        completeLeads,
+        completeLeadsPercent: percent(completeLeads, leadRows.length),
+        completeContactLeads,
+        completeContactLeadsPercent: percent(completeContactLeads, leadRows.length),
       },
       breakdowns: {
         tipo: byTipo,
