@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import crypto from 'crypto';
 import { appendLeadEventToSheet } from '../services/sheets.js';
 
 const router = Router();
@@ -24,6 +25,50 @@ const getClientIp = (req) => {
 };
 
 const isLeadEvent = (eventName) => String(eventName || '').endsWith('FormularioEnviado_WhatsApp');
+
+const normalizeEmail = (value = '') => {
+  const email = String(value || '').trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : '';
+};
+
+const normalizeName = (value = '') =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+const sha256 = (value = '') =>
+  crypto
+    .createHash('sha256')
+    .update(String(value))
+    .digest('hex');
+
+const buildAdvancedUserData = ({ customData = {}, userData = {} }) => {
+  const email = normalizeEmail(userData.em || userData.email || customData.email);
+  const nombre = normalizeName(userData.nombre || customData.nombre);
+  const nameParts = nombre.split(/\s+/).filter(Boolean);
+  const firstName = normalizeName(userData.fn) || nameParts[0] || '';
+  const lastName = normalizeName(userData.ln) || (nameParts.length > 1 ? nameParts.slice(1).join(' ') : '');
+
+  return cleanObject({
+    em: email ? [sha256(email)] : undefined,
+    fn: firstName ? [sha256(firstName)] : undefined,
+    ln: lastName ? [sha256(lastName)] : undefined,
+  });
+};
+
+const stripMetaCustomData = (customData = {}) => {
+  const {
+    email,
+    nombre,
+    codigo,
+    bienvenida_enviada: bienvenidaEnviada,
+    ...safeCustomData
+  } = customData || {};
+
+  return safeCustomData;
+};
 
 const inferProductFromEvent = (eventName) => {
   const name = String(eventName || '');
@@ -52,6 +97,7 @@ router.post('/capi', async (req, res, next) => {
       event_id: eventId,
       event_source_url: eventSourceUrl,
       custom_data: customData,
+      user_data: browserUserData,
       fbp,
       fbc,
     } = body;
@@ -71,8 +117,9 @@ router.post('/capi', async (req, res, next) => {
         client_user_agent: req.headers['user-agent'],
         fbp,
         fbc,
+        ...buildAdvancedUserData({ customData, userData: browserUserData }),
       }),
-      custom_data: cleanObject(customData),
+      custom_data: cleanObject(stripMetaCustomData(customData)),
     });
 
     const payload = { data: [event] };

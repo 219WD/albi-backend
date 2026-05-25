@@ -33,7 +33,7 @@ const corsOptions = {
 
     return callback(new Error(`Origen no permitido por CORS: ${origin}`));
   },
-  methods: ['GET', 'POST'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   optionsSuccessStatus: 204,
 };
@@ -48,7 +48,7 @@ app.use('/meta', express.text({ type: 'text/plain' }));
 
 app.use('/meta', rateLimit({
   windowMs: 60 * 1000,
-  max: 120,
+  max: 3000,
   message: { error: 'Demasiados eventos, espera un minuto.' },
 }));
 app.use('/meta', metaCapiRoutes);
