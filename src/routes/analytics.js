@@ -7,12 +7,13 @@ import {
   PRODUCTOS_VALIDOS,
   PASO_LABELS,
 } from '../helpers.js';
-import { getSheetRows } from '../services/sheets.js';
+import { getSheetRows, updateLeadStatusByRow } from '../services/sheets.js';
 
 const router   = Router();
 const PROPERTY = () => `properties/${process.env.GA4_PROPERTY_ID}`;
 
 const RANGE_DAYS = { '7d': 7, '30d': 30, '90d': 90 };
+const LEAD_STATUSES = new Set(['Nuevo', 'Contactado', 'Cotizado', 'Vendido', 'Perdido']);
 
 function parseSheetDate(row) {
   const raw = row.timestamp || row.marca_temporal || row.fecha || row.created_at || '';
@@ -150,6 +151,105 @@ function isLeadRow(row) {
   return Boolean(normalizeText(row.tipo) || normalizeText(row.ubicacion) || normalizeText(row.sistema));
 }
 
+function getLeadStatus(row) {
+  const status = normalizeText(row.estado_lead || row.estado);
+  return LEAD_STATUSES.has(status) ? status : 'Nuevo';
+}
+
+function getPhone(row) {
+  return normalizeText(row.telefono || row.tel || row.phone || row.whatsapp || row.celular);
+}
+
+function isStepRow(row, step) {
+  const eventName = normalizeText(row.event_name).toLowerCase();
+  const category = normalizeText(row.content_category).toLowerCase();
+
+  if (eventName.includes(`paso${step}`) || category.includes(`paso${step}`)) return true;
+
+  if (step === 1) return hasMeaningfulValue(row.tipo);
+  if (step === 2) return hasMeaningfulValue(row.tipo) && hasMeaningfulValue(row.ubicacion);
+  if (step === 3) return isCompleteLead(row);
+  return false;
+}
+
+function matchesFilters(row, filters = {}) {
+  return Object.entries(filters).every(([field, value]) => {
+    if (!value) return true;
+    return canonicalKey(row[field]) === canonicalKey(value);
+  });
+}
+
+function filterByQuery(rows, query) {
+  return rows.filter(row => matchesFilters(row, {
+    producto: query.producto,
+    tipo: query.tipo,
+    ubicacion: query.ubicacion,
+    sistema: query.sistema,
+  }));
+}
+
+function buildFilterOptions(rows) {
+  return {
+    producto: countBy(rows, 'producto', value => normalizeText(value) || 'Sin dato').map(item => item.label),
+    tipo: countBy(rows, 'tipo').map(item => item.label),
+    ubicacion: countBy(rows, 'ubicacion').map(item => item.label),
+    sistema: countBy(rows, 'sistema').map(item => item.label),
+  };
+}
+
+function buildFunnel(rows, leadRows) {
+  const steps = [
+    { key: 'paso1', label: 'Paso 1', count: rows.filter(row => isStepRow(row, 1)).length },
+    { key: 'paso2', label: 'Paso 2', count: rows.filter(row => isStepRow(row, 2)).length },
+    { key: 'paso3', label: 'Paso 3', count: rows.filter(row => isStepRow(row, 3)).length },
+    { key: 'lead', label: 'Lead completo', count: leadRows.length },
+  ];
+
+  return steps.map((step, index) => {
+    const previous = index === 0 ? step.count : steps[index - 1].count;
+    return {
+      ...step,
+      retention: index === 0 ? 100 : percent(step.count, previous),
+      dropoff: index === 0 ? 0 : Math.max(0, 100 - percent(step.count, previous)),
+    };
+  });
+}
+
+function buildLocationConversion(rows, leadRows) {
+  const visitsByLocation = new Map();
+  const leadsByLocation = new Map();
+
+  rows.filter(row => isStepRow(row, 2)).forEach((row) => {
+    const raw = getField(row, 'ubicacion');
+    const key = canonicalKey(raw);
+    const current = visitsByLocation.get(key) || { label: titleCase(raw), visits: 0 };
+    current.visits += 1;
+    visitsByLocation.set(key, current);
+  });
+
+  leadRows.forEach((row) => {
+    const raw = getField(row, 'ubicacion');
+    const key = canonicalKey(raw);
+    const current = leadsByLocation.get(key) || { label: titleCase(raw), leads: 0 };
+    current.leads += 1;
+    leadsByLocation.set(key, current);
+    if (!visitsByLocation.has(key)) visitsByLocation.set(key, { label: titleCase(raw), visits: 0 });
+  });
+
+  return Array.from(visitsByLocation.entries())
+    .map(([key, location]) => {
+      const leads = leadsByLocation.get(key)?.leads || 0;
+      const visits = Math.max(location.visits, leads);
+      return {
+        label: location.label,
+        visits,
+        leads,
+        conversion: percent(leads, visits),
+      };
+    })
+    .sort((a, b) => b.leads - a.leads || b.conversion - a.conversion || a.label.localeCompare(b.label));
+}
+
 function filterRowsByRange(rows, query) {
   const { from, to } = getSheetDateBounds(query);
   return rows.filter((row) => {
@@ -162,7 +262,11 @@ function filterRowsByRange(rows, query) {
 router.get('/sheet-summary', async (req, res, next) => {
   try {
     const allRows = await getSheetRows();
-    const leadRows = filterRowsByRange(allRows.filter(isLeadRow), req.query);
+    const rangedRows = filterRowsByRange(allRows, req.query);
+    const baseLeadRows = rangedRows.filter(isLeadRow);
+    const filterOptions = buildFilterOptions(baseLeadRows);
+    const leadRows = filterByQuery(baseLeadRows, req.query);
+    const filteredRows = filterByQuery(rangedRows, req.query);
     const byTipo = countBy(leadRows, 'tipo');
     const byUbicacion = countBy(leadRows, 'ubicacion');
     const bySistema = countBy(leadRows, 'sistema');
@@ -186,6 +290,9 @@ router.get('/sheet-summary', async (req, res, next) => {
         producto: getField(row, 'producto'),
         nombre: getField(row, 'nombre'),
         email: getField(row, 'email'),
+        telefono: getPhone(row),
+        estado: getLeadStatus(row),
+        rowNumber: row.rowNumber,
       }));
 
     res.json({
@@ -215,11 +322,34 @@ router.get('/sheet-summary', async (req, res, next) => {
         sistema: bySistema,
         producto: byProducto,
       },
+      filterOptions,
+      funnel: buildFunnel(filteredRows, leadRows),
+      locationConversion: buildLocationConversion(filteredRows, leadRows),
       dailyLeads: buildDailyLeads(leadRows),
       recentLeads,
     });
   } catch (err) {
     next(err);
+  }
+});
+
+router.patch('/sheet-leads/:rowNumber/status', async (req, res, next) => {
+  try {
+    const rowNumber = Number(req.params.rowNumber);
+    const status = normalizeText(req.body?.status);
+
+    if (!Number.isInteger(rowNumber) || rowNumber < 2) {
+      return res.status(400).json({ error: 'Fila invalida' });
+    }
+
+    if (!LEAD_STATUSES.has(status)) {
+      return res.status(400).json({ error: 'Estado invalido' });
+    }
+
+    await updateLeadStatusByRow(rowNumber, status);
+    return res.json({ ok: true, rowNumber, status });
+  } catch (err) {
+    return next(err);
   }
 });
 

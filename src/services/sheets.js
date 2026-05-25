@@ -2,7 +2,7 @@ import '../env.js';
 import { google } from 'googleapis';
 
 const SHEET_NAME = process.env.SPREADSHEET_SHEET_NAME || 'Respuestas de formulario 1';
-const SHEET_RANGE = `${SHEET_NAME}!A:Z`;
+const SHEET_RANGE = `${SHEET_NAME}!A:ZZ`;
 
 function hasRealEnvValue(value) {
   const normalized = String(value || '').trim();
@@ -97,6 +97,32 @@ export async function getSheetSnapshot() {
 export async function getSheetRows() {
   const snapshot = await getSheetSnapshot();
   return snapshot.rows;
+}
+
+export async function updateLeadStatusByRow(rowNumber, status) {
+  const snapshot = await getSheetSnapshot();
+  let columnIndex = snapshot.headerIndexes.estado_lead ?? snapshot.headerIndexes.estado;
+
+  if (columnIndex === undefined) {
+    columnIndex = snapshot.headers.length;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: process.env.SPREADSHEET_ID,
+      range: `${SHEET_NAME}!${toColumnLetter(columnIndex)}1`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [['estado_lead']],
+      },
+    });
+  }
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: process.env.SPREADSHEET_ID,
+    range: `${SHEET_NAME}!${toColumnLetter(columnIndex)}${rowNumber}`,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: {
+      values: [[status]],
+    },
+  });
 }
 
 export async function appendLeadEventToSheet(lead = {}) {
