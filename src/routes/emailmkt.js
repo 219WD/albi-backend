@@ -2,8 +2,11 @@ import { Router } from 'express';
 import {
   authenticateAdmin,
   createAdminToken,
+  listAdminUsers,
   registerAdminUser,
   requireEmailMktAdmin,
+  requireSuperAdmin,
+  updateAdminUserAccess,
 } from '../services/adminAuth.js';
 import {
   createEmailMarketingTemplate,
@@ -54,6 +57,28 @@ router.post('/login', async (req, res, next) => {
 });
 
 router.use(requireEmailMktAdmin);
+
+router.get('/me', async (req, res) => {
+  return res.json({ ok: true, admin: req.admin });
+});
+
+router.get('/users', requireSuperAdmin, async (_req, res, next) => {
+  try {
+    const users = await listAdminUsers();
+    return res.json({ ok: true, users });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.patch('/users/:userId', requireSuperAdmin, async (req, res, next) => {
+  try {
+    const user = await updateAdminUserAccess(req.params.userId, req.body || {}, req.admin || {});
+    return res.json({ ok: true, user });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 router.get('/recipients', async (req, res, next) => {
   try {

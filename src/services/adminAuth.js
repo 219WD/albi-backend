@@ -6,11 +6,13 @@ import EmailMktUser from '../models/EmailMktUser.js';
 const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PASSWORD_KEYLEN = 64;
 const PASSWORD_RANGOS = new Set(['emailmkt', 'admin', 'superadmin']);
+const USER_RANGOS = new Set(['pendiente', 'emailmkt', 'admin', 'superadmin', 'bloqueado']);
 
 const base64url = (value) => Buffer.from(value).toString('base64url');
 
 const getSecret = () => process.env.EMAILMKT_TOKEN_SECRET || process.env.ANALYTICS_SECRET || 'emailmkt-dev-secret';
 
+const normalizeText = (value) => String(value || '').trim();
 const normalizeUsername = (value) => String(value || '').trim().toLowerCase();
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
@@ -63,9 +65,14 @@ const signPayload = (payload) =>
     .digest('base64url');
 
 const publicAdmin = (admin) => ({
+  id: String(admin._id || admin.id || ''),
   username: admin.username,
   email: admin.email,
   rango: admin.rango,
+  active: admin.active !== false,
+  lastLoginAt: admin.lastLoginAt || null,
+  createdAt: admin.createdAt || null,
+  updatedAt: admin.updatedAt || null,
 });
 
 export async function registerAdminUser(input = {}) {
@@ -192,4 +199,67 @@ export async function requireEmailMktAdmin(req, res, next) {
   } catch (error) {
     return next(error);
   }
+}
+
+export function requireSuperAdmin(req, res, next) {
+  if (req.admin?.rango !== 'superadmin') {
+    return res.status(403).json({ error: 'Solo super admin puede acceder a usuarios.' });
+  }
+
+  return next();
+}
+
+export async function listAdminUsers() {
+  await ensureMongoConnection();
+
+  const users = await EmailMktUser
+    .find({})
+    .sort({ createdAt: -1 })
+    .lean();
+
+  return users.map(publicAdmin);
+}
+
+export async function updateAdminUserAccess(userId, input = {}, actor = {}) {
+  await ensureMongoConnection();
+
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    throw httpError('Usuario invalido.', 400);
+  }
+
+  const nextRango = normalizeText(input.rango).toLowerCase();
+  const nextActive = input.active === undefined ? undefined : Boolean(input.active);
+
+  if (!USER_RANGOS.has(nextRango)) {
+    throw httpError('Rango invalido.', 400);
+  }
+
+  const user = await EmailMktUser.findById(userId);
+
+  if (!user) {
+    throw httpError('Usuario no encontrado.', 404);
+  }
+
+  const isDemotingSuperAdmin =
+    user.rango === 'superadmin'
+    && (nextRango !== 'superadmin' || nextActive === false);
+
+  if (isDemotingSuperAdmin) {
+    const activeSuperAdmins = await EmailMktUser.countDocuments({
+      _id: { $ne: user._id },
+      rango: 'superadmin',
+      active: true,
+    });
+
+    if (activeSuperAdmins < 1) {
+      throw httpError('No podes quitar el ultimo super admin activo.', 400);
+    }
+  }
+
+  user.rango = nextRango;
+  if (nextActive !== undefined) user.active = nextActive;
+  user.updatedBy = actor.username || actor.email || '';
+  await user.save();
+
+  return publicAdmin(user);
 }
