@@ -8,6 +8,7 @@ import helmet from 'helmet';
 import analyticsRoutes from './routes/analytics.js';
 import emailmktRoutes from './routes/emailmkt.js';
 import metaCapiRoutes from './routes/metaCapi.js';
+import promosRoutes from './routes/promos.js';
 import unsubscribeRoutes from './routes/unsubscribe.js';
 import welcomeRoutes from './routes/welcome.js';
 import { requireEmailMktAdmin } from './services/adminAuth.js';
@@ -61,6 +62,7 @@ app.use('/api', rateLimit({
 }));
 
 app.use('/api/emailmkt', emailmktRoutes);
+app.use('/api/promos', promosRoutes);
 
 app.use('/api', (req, res, next) => {
   const auth = req.headers.authorization || '';
