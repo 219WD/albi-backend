@@ -188,6 +188,21 @@ function filterByQuery(rows, query) {
   }));
 }
 
+function leadToPublic(row) {
+  return {
+    fecha: parseSheetDate(row)?.toISOString() || '',
+    tipo: getField(row, 'tipo'),
+    ubicacion: getField(row, 'ubicacion'),
+    sistema: getField(row, 'sistema'),
+    producto: getField(row, 'producto'),
+    nombre: getField(row, 'nombre'),
+    email: getField(row, 'email'),
+    telefono: getPhone(row),
+    estado: getLeadStatus(row),
+    rowNumber: row.rowNumber,
+  };
+}
+
 function buildFilterOptions(rows) {
   return {
     producto: countBy(rows, 'producto', value => normalizeText(value) || 'Sin dato').map(item => item.label),
@@ -282,18 +297,7 @@ router.get('/sheet-summary', async (req, res, next) => {
       .slice()
       .sort((a, b) => (parseSheetDate(b)?.getTime() || 0) - (parseSheetDate(a)?.getTime() || 0))
       .slice(0, 8)
-      .map(row => ({
-        fecha: parseSheetDate(row)?.toISOString() || '',
-        tipo: getField(row, 'tipo'),
-        ubicacion: getField(row, 'ubicacion'),
-        sistema: getField(row, 'sistema'),
-        producto: getField(row, 'producto'),
-        nombre: getField(row, 'nombre'),
-        email: getField(row, 'email'),
-        telefono: getPhone(row),
-        estado: getLeadStatus(row),
-        rowNumber: row.rowNumber,
-      }));
+      .map(leadToPublic);
 
     res.json({
       source: 'google_sheets',
@@ -327,6 +331,59 @@ router.get('/sheet-summary', async (req, res, next) => {
       locationConversion: buildLocationConversion(filteredRows, leadRows),
       dailyLeads: buildDailyLeads(leadRows),
       recentLeads,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/sheet-leads', async (req, res, next) => {
+  try {
+    const allRows = await getSheetRows();
+    const rangedRows = filterRowsByRange(allRows, req.query);
+    const baseLeadRows = rangedRows.filter(isLeadRow);
+    const filterOptions = buildFilterOptions(baseLeadRows);
+    const status = normalizeText(req.query.status);
+    const search = canonicalKey(req.query.search);
+    const page = Math.max(1, Number.parseInt(req.query.page || '1', 10) || 1);
+    const pageSize = Math.min(200, Math.max(10, Number.parseInt(req.query.pageSize || '50', 10) || 50));
+
+    const filteredWithoutStatus = filterByQuery(baseLeadRows, req.query)
+      .filter((row) => {
+        if (!search) return true;
+
+        return ['nombre', 'email', 'telefono', 'tel', 'phone', 'whatsapp', 'ubicacion', 'tipo', 'sistema', 'producto']
+          .some((field) => canonicalKey(row[field]).includes(search));
+      })
+      .sort((a, b) => (parseSheetDate(b)?.getTime() || 0) - (parseSheetDate(a)?.getTime() || 0));
+
+    const statusCounts = Array.from(LEAD_STATUSES).map(label => ({
+      label,
+      count: filteredWithoutStatus.filter(row => getLeadStatus(row) === label).length,
+    }));
+    const filtered = filteredWithoutStatus.filter((row) => !status || getLeadStatus(row) === status);
+    const total = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const safePage = Math.min(page, totalPages);
+    const start = (safePage - 1) * pageSize;
+    const leads = filtered.slice(start, start + pageSize).map(leadToPublic);
+
+    res.json({
+      source: 'google_sheets',
+      sheetUrl: process.env.SPREADSHEET_ID
+        ? `https://docs.google.com/spreadsheets/d/${process.env.SPREADSHEET_ID}/edit`
+        : '',
+      generatedAt: new Date().toISOString(),
+      filterOptions,
+      statusOptions: Array.from(LEAD_STATUSES),
+      statusCounts,
+      pagination: {
+        page: safePage,
+        pageSize,
+        total,
+        totalPages,
+      },
+      leads,
     });
   } catch (err) {
     next(err);
