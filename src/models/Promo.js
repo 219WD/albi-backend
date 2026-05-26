@@ -62,6 +62,23 @@ const promoSchema = new mongoose.Schema({
     default: true,
     index: true,
   },
+  metrics: {
+    views: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    clicks: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    subscribes: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+  },
   createdBy: String,
   updatedBy: String,
 }, {

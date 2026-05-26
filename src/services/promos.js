@@ -19,6 +19,13 @@ const DEFAULT_PROMO = {
   successText: 'Guarda este codigo y usalo al momento de coordinar la instalacion.',
   whatsappText: 'Hola, quiero usar mi beneficio de Albiero Seguridad.',
   active: true,
+  metrics: {
+    views: 0,
+    clicks: 0,
+    subscribes: 0,
+    clickRate: 0,
+    subscribeRate: 0,
+  },
 };
 
 async function ensureMongoConnection() {
@@ -51,6 +58,10 @@ function parseOptionalDate(value, fieldName) {
 function toPublicPromo(promo) {
   if (!promo) return DEFAULT_PROMO;
 
+  const views = Number(promo.metrics?.views || 0);
+  const clicks = Number(promo.metrics?.clicks || 0);
+  const subscribes = Number(promo.metrics?.subscribes || 0);
+
   return {
     id: String(promo._id || promo.id),
     title: promo.title,
@@ -67,6 +78,13 @@ function toPublicPromo(promo) {
     startAt: promo.startAt || null,
     endAt: promo.endAt || null,
     active: promo.active,
+    metrics: {
+      views,
+      clicks,
+      subscribes,
+      clickRate: views > 0 ? Math.round((clicks / views) * 1000) / 10 : 0,
+      subscribeRate: views > 0 ? Math.round((subscribes / views) * 1000) / 10 : 0,
+    },
     createdAt: promo.createdAt || null,
     updatedAt: promo.updatedAt || null,
   };
@@ -170,4 +188,28 @@ export async function updatePromo(promoId, input = {}, admin = {}) {
   }
 
   return toPublicPromo(promo);
+}
+
+export async function recordPromoEvent(promoId, eventType) {
+  if (!mongoose.Types.ObjectId.isValid(promoId)) {
+    return { ok: true, ignored: true };
+  }
+
+  const eventMap = {
+    view: 'metrics.views',
+    click: 'metrics.clicks',
+    subscribe: 'metrics.subscribes',
+  };
+  const field = eventMap[eventType];
+
+  if (!field) {
+    const error = new Error('Evento de promo invalido.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  await ensureMongoConnection();
+  await Promo.updateOne({ _id: promoId }, { $inc: { [field]: 1 } });
+
+  return { ok: true };
 }
