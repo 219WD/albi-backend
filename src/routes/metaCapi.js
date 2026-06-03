@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import { appendLeadEventToSheet } from '../services/sheets.js';
+import { saveEmailMarketingLead } from '../services/emailmkt.js';
 
 const router = Router();
 const GRAPH_API_VERSION = 'v21.0';
@@ -160,6 +161,26 @@ router.post('/capi', async (req, res, next) => {
 
     const result = await metaResponse.json().catch(() => ({}));
 
+    const leadEmail = normalizeEmail(normalizedCustomData?.email || browserUserData?.em || browserUserData?.email);
+    if (leadEmail) {
+      try {
+        await saveEmailMarketingLead({
+          email: leadEmail,
+          nombre: normalizedCustomData?.nombre || browserUserData?.nombre,
+          codigo: normalizedCustomData?.codigo,
+          source: String(eventName || '').startsWith('Promo_') ? 'promo' : 'meta_capi',
+          promoId: normalizedCustomData?.promo_id,
+          tipo: normalizedCustomData?.tipo,
+          ubicacion: normalizedCustomData?.ubicacion,
+          sistema: normalizedCustomData?.sistema,
+          producto: normalizedCustomData?.producto || inferProductFromEvent(eventName),
+          bienvenidaEnviada: Boolean(normalizedCustomData?.bienvenida_enviada),
+        });
+      } catch (leadError) {
+        console.error('[Leads] No se pudo guardar el lead en Mongo', leadError);
+      }
+    }
+
     if (isLeadEvent(eventName)) {
       try {
         await appendLeadEventToSheet({
@@ -190,3 +211,4 @@ router.post('/capi', async (req, res, next) => {
 });
 
 export default router;
+

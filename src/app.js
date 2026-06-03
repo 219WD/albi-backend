@@ -12,11 +12,13 @@ import promosRoutes from './routes/promos.js';
 import reportsRoutes from './routes/reports.js';
 import unsubscribeRoutes from './routes/unsubscribe.js';
 import welcomeRoutes from './routes/welcome.js';
+import worldCupRoutes from './routes/worldCup.js';
 import { requireEmailMktAdmin } from './services/adminAuth.js';
 
 const app = express();
 const defaultOrigins = [
   'http://localhost:5173',
+  'http://127.0.0.1:5173',
   'https://albiero.com.ar',
   'https://www.albiero.com.ar',
 ];
@@ -65,6 +67,7 @@ app.use('/api', rateLimit({
 app.use('/api/emailmkt', emailmktRoutes);
 app.use('/api/promos', promosRoutes);
 app.use('/api/reports', reportsRoutes);
+app.use('/api/worldcup', worldCupRoutes);
 
 app.use('/api', (req, res, next) => {
   const auth = req.headers.authorization || '';

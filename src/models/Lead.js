@@ -1,14 +1,69 @@
-// models/Lead.js
-const mongoose = require("mongoose");
+import mongoose from 'mongoose';
 
 const leadSchema = new mongoose.Schema({
-  nombre: String,
-  email: { type: String, unique: true },
-  codigo: String,
-  abVariant: String,
-  bienvenidaEnviada: { type: Boolean, default: false },
-  unsubscribed: { type: Boolean, default: false },
-  createdAt: { type: Date, default: Date.now }
-});
+  nombre: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+    lowercase: true,
+    trim: true,
+    index: true,
+  },
+  codigo: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  abVariant: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  source: {
+    type: String,
+    default: 'website',
+    trim: true,
+  },
+  promoId: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  tipo: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  ubicacion: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  sistema: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  producto: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  bienvenidaEnviada: {
+    type: Boolean,
+    default: false,
+  },
+  unsubscribed: {
+    type: Boolean,
+    default: false,
+  },
+}, { timestamps: true });
 
-module.exports = mongoose.model("Lead", leadSchema);
+leadSchema.index({ unsubscribed: 1, email: 1 });
+
+export default mongoose.models.Lead || mongoose.model('Lead', leadSchema);

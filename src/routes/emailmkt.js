@@ -17,6 +17,7 @@ import {
   getEmailMarketingTemplates,
   previewEmailMarketingRecipients,
   sendEmailMarketingCampaign,
+  saveEmailMarketingLead,
   updateEmailMarketingTemplate,
 } from '../services/emailmkt.js';
 
@@ -31,6 +32,19 @@ router.post('/register', async (req, res, next) => {
       admin,
       message: 'Usuario creado. Cambiale el rango en Mongo a emailmkt, admin o superadmin para habilitarlo.',
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/subscribe', async (req, res, next) => {
+  try {
+    const lead = await saveEmailMarketingLead({
+      ...(req.body || {}),
+      source: req.body?.source || 'email_capture',
+    });
+
+    return res.status(201).json({ ok: true, lead });
   } catch (error) {
     return next(error);
   }
@@ -162,3 +176,4 @@ router.post('/send', async (req, res, next) => {
 });
 
 export default router;
+
