@@ -4,6 +4,7 @@ import nodemailer from 'nodemailer';
 import CampaignSend from '../models/CampaignSend.js';
 import EmailTemplate from '../models/EmailTemplate.js';
 import Lead from '../models/Lead.js';
+import WorldCupUser from '../models/WorldCupUser.js';
 import { getSheetRows } from './sheets.js';
 
 function getEmailConfig() {
@@ -51,21 +52,17 @@ async function ensureMongoConnection() {
 }
 
 function getNewsletterRecipientsFromRows(rows) {
-  const seen = new Set();
-
   return rows
-    .map((row) => ({
+    .map((row, index) => ({
       email: String(row.email || '').trim().toLowerCase(),
       nombre: String(row.nombre || '').trim(),
       bienvenida: String(row.bienvenida_enviada || '').trim().toLowerCase(),
+      source: 'google_sheets',
+      sources: ['google_sheets'],
+      rowNumber: row.rowNumber || index + 2,
+      createdAt: row.timestamp || row.marca_temporal || row.fecha || '',
     }))
-    .filter((row) => isValidEmail(row.email))
-    .filter((row) => row.bienvenida !== 'cancelado')
-    .filter((row) => {
-      if (seen.has(row.email)) return false;
-      seen.add(row.email);
-      return true;
-    });
+    .filter((row) => isValidEmail(row.email));
 }
 
 function serializeLeadRecipient(lead = {}) {
@@ -73,25 +70,77 @@ function serializeLeadRecipient(lead = {}) {
     email: String(lead.email || '').trim().toLowerCase(),
     nombre: String(lead.nombre || '').trim(),
     bienvenida: lead.unsubscribed ? 'cancelado' : '',
+    source: 'mongodb',
+    sources: ['mongodb'],
+    tipo: String(lead.tipo || '').trim(),
+    ubicacion: String(lead.ubicacion || '').trim(),
+    sistema: String(lead.sistema || '').trim(),
+    producto: String(lead.producto || '').trim(),
+    createdAt: lead.createdAt || null,
+    updatedAt: lead.updatedAt || null,
+  };
+}
+
+function serializeWorldCupRecipient(user = {}) {
+  return {
+    email: String(user.email || '').trim().toLowerCase(),
+    nombre: String(user.name || '').trim(),
+    bienvenida: '',
+    source: 'worldcup',
+    sources: ['worldcup'],
+    createdAt: user.createdAt || null,
+    updatedAt: user.updatedAt || null,
   };
 }
 
 function getUniqueRecipients(recipients = []) {
-  const seen = new Set();
+  const cancelledEmails = new Set();
+  const map = new Map();
 
-  return recipients
-    .map((row) => ({
+  recipients.forEach((row) => {
+    const normalized = {
+      ...row,
       email: String(row.email || '').trim().toLowerCase(),
       nombre: String(row.nombre || '').trim(),
       bienvenida: String(row.bienvenida || '').trim().toLowerCase(),
-    }))
-    .filter((row) => isValidEmail(row.email))
-    .filter((row) => row.bienvenida !== 'cancelado')
-    .filter((row) => {
-      if (seen.has(row.email)) return false;
-      seen.add(row.email);
-      return true;
-    });
+      sources: Array.isArray(row.sources) && row.sources.length ? row.sources : [row.source || 'sin_fuente'],
+    };
+
+    if (!isValidEmail(normalized.email)) return;
+    if (normalized.bienvenida === 'cancelado') {
+      cancelledEmails.add(normalized.email);
+      return;
+    }
+
+    const current = map.get(normalized.email);
+    if (!current) {
+      map.set(normalized.email, {
+        ...normalized,
+        sources: new Set(normalized.sources),
+      });
+      return;
+    }
+
+    normalized.sources.forEach((source) => current.sources.add(source));
+    current.nombre = current.nombre || normalized.nombre;
+    current.tipo = current.tipo || normalized.tipo || '';
+    current.ubicacion = current.ubicacion || normalized.ubicacion || '';
+    current.sistema = current.sistema || normalized.sistema || '';
+    current.producto = current.producto || normalized.producto || '';
+    current.createdAt = current.createdAt || normalized.createdAt || null;
+    current.updatedAt = current.updatedAt || normalized.updatedAt || null;
+  });
+
+  cancelledEmails.forEach((email) => map.delete(email));
+
+  return Array.from(map.values()).map((recipient) => {
+    const sources = Array.from(recipient.sources);
+    return {
+      ...recipient,
+      sources,
+      source: sources.join('+'),
+    };
+  });
 }
 
 export async function saveEmailMarketingLead(input = {}) {
@@ -134,18 +183,32 @@ export async function saveEmailMarketingLead(input = {}) {
 async function getNewsletterRecipients() {
   await ensureMongoConnection();
 
+  let rows = [];
+  try {
+    rows = await getSheetRows();
+  } catch (error) {
+    console.warn('[EmailMkt] No se pudieron leer contactos desde Google Sheets:', error.message);
+  }
   const leads = await Lead.find({ unsubscribed: { $ne: true } })
     .sort({ updatedAt: -1 })
-    .select('email nombre unsubscribed')
+    .select('email nombre unsubscribed tipo ubicacion sistema producto createdAt updatedAt')
+    .lean();
+  const worldCupUsers = await WorldCupUser.find({ active: { $ne: false } })
+    .sort({ updatedAt: -1 })
+    .select('email name active createdAt updatedAt')
     .lean();
 
-  const dbRecipients = getUniqueRecipients(leads.map(serializeLeadRecipient));
-  if (dbRecipients.length > 0) {
-    return { rows: leads, recipients: dbRecipients, source: 'mongodb' };
-  }
+  const recipients = getUniqueRecipients([
+    ...getNewsletterRecipientsFromRows(rows),
+    ...leads.map(serializeLeadRecipient),
+    ...worldCupUsers.map(serializeWorldCupRecipient),
+  ]);
 
-  const rows = await getSheetRows();
-  return { rows, recipients: getNewsletterRecipientsFromRows(rows), source: 'google_sheets' };
+  return {
+    rows: [...rows, ...leads, ...worldCupUsers],
+    recipients,
+    source: 'google_sheets+mongodb+worldcup',
+  };
 }
 
 function contentToHtml(content = '') {
@@ -338,6 +401,51 @@ export async function previewEmailMarketingRecipients(campaignId = '') {
     alreadySent: filtered.sentEmails.size,
     eligible: filtered.eligibleRecipients.length,
     preview: filtered.eligibleRecipients.slice(0, 15),
+  };
+}
+
+export async function listEmailMarketingContacts(campaignId = '') {
+  const { recipients, source } = await getNewsletterRecipients();
+  const normalizedCampaignId = String(campaignId || '').trim();
+  const filtered = normalizedCampaignId
+    ? await filterAlreadySentRecipients(normalizedCampaignId, recipients)
+    : { sentEmails: new Set(), eligibleRecipients: recipients };
+
+  const sentEmails = filtered.sentEmails || new Set();
+  const contacts = recipients
+    .map((recipient) => ({
+      email: recipient.email,
+      nombre: recipient.nombre || '',
+      sources: recipient.sources || [recipient.source || 'sin_fuente'],
+      source: recipient.source || '',
+      tipo: recipient.tipo || '',
+      ubicacion: recipient.ubicacion || '',
+      sistema: recipient.sistema || '',
+      producto: recipient.producto || '',
+      createdAt: recipient.createdAt || null,
+      updatedAt: recipient.updatedAt || null,
+      alreadySent: sentEmails.has(recipient.email),
+      eligible: !sentEmails.has(recipient.email),
+    }))
+    .sort((a, b) => {
+      if (a.eligible !== b.eligible) return a.eligible ? -1 : 1;
+      return a.email.localeCompare(b.email);
+    });
+
+  const bySource = contacts.reduce((acc, contact) => {
+    (contact.sources || []).forEach((sourceName) => {
+      acc[sourceName] = (acc[sourceName] || 0) + 1;
+    });
+    return acc;
+  }, {});
+
+  return {
+    source,
+    total: contacts.length,
+    eligible: filtered.eligibleRecipients.length,
+    alreadySent: sentEmails.size,
+    bySource,
+    contacts,
   };
 }
 

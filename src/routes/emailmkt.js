@@ -15,6 +15,7 @@ import {
   getEmailMarketingCampaigns,
   getEmailMarketingTemplate,
   getEmailMarketingTemplates,
+  listEmailMarketingContacts,
   previewEmailMarketingRecipients,
   sendEmailMarketingCampaign,
   saveEmailMarketingLead,
@@ -97,6 +98,15 @@ router.patch('/users/:userId', requireSuperAdmin, async (req, res, next) => {
 router.get('/recipients', async (req, res, next) => {
   try {
     const result = await previewEmailMarketingRecipients(req.query.campaignId);
+    return res.json({ ok: true, ...result });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/contacts', async (req, res, next) => {
+  try {
+    const result = await listEmailMarketingContacts(req.query.campaignId);
     return res.json({ ok: true, ...result });
   } catch (error) {
     return next(error);
