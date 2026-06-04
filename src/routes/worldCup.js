@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireEmailMktAdmin } from '../services/adminAuth.js';
 import {
+  getAdminPredictionAudit,
   getLeaderboard,
   getUserPredictions,
   getWorldCupFixture,
@@ -54,6 +55,15 @@ router.get('/me', requireWorldCupUser, async (req, res, next) => {
   try {
     const predictions = await getUserPredictions(req.worldCupUser.id);
     return res.json({ ok: true, user: req.worldCupUser, predictions });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/admin/predictions', requireEmailMktAdmin, async (req, res, next) => {
+  try {
+    const audit = await getAdminPredictionAudit(req.query || {});
+    return res.json({ ok: true, ...audit });
   } catch (error) {
     return next(error);
   }

@@ -274,6 +274,82 @@ export async function saveMatchResult(matchId, input = {}, admin = {}) {
   };
 }
 
+export async function getAdminPredictionAudit(filters = {}) {
+  await ensureMongoConnection();
+
+  const matchId = normalizeText(filters.matchId);
+  const userId = normalizeText(filters.userId);
+  const query = {};
+  if (matchId && matchId !== 'all') query.matchId = matchId;
+  if (userId && userId !== 'all' && mongoose.Types.ObjectId.isValid(userId)) query.userId = userId;
+
+  const [users, predictions, results, allPredictions] = await Promise.all([
+    WorldCupUser.find({}).select('name email active createdAt updatedAt').lean(),
+    WorldCupPrediction.find(query).sort({ updatedAt: -1, createdAt: -1 }).lean(),
+    WorldCupResult.find({}).lean(),
+    WorldCupPrediction.find({}).select('userId').lean(),
+  ]);
+  const userMap = new Map(users.map((user) => [String(user._id), user]));
+  const resultMap = new Map(results.map((result) => [result.matchId, result]));
+  const predictionCountByUser = new Map();
+  allPredictions.forEach((prediction) => {
+    const key = String(prediction.userId);
+    predictionCountByUser.set(key, (predictionCountByUser.get(key) || 0) + 1);
+  });
+
+  const rows = predictions.map((prediction) => {
+    const match = getMatchById(prediction.matchId);
+    const user = userMap.get(String(prediction.userId));
+    const result = resultMap.get(prediction.matchId);
+
+    return {
+      id: String(prediction._id),
+      matchId: prediction.matchId,
+      match: match ? serializeMatch(match, resultMap) : null,
+      user: user
+        ? { ...publicUser(user), active: Boolean(user.active) }
+        : { id: String(prediction.userId), name: 'Usuario eliminado', email: '', active: false },
+      homeScore: prediction.homeScore,
+      awayScore: prediction.awayScore,
+      points: result ? scorePrediction(prediction, result) : null,
+      createdAt: prediction.createdAt || null,
+      updatedAt: prediction.updatedAt || null,
+    };
+  });
+
+  const byMatchMap = new Map();
+  rows.forEach((row) => {
+    const key = row.matchId;
+    if (!byMatchMap.has(key)) {
+      byMatchMap.set(key, {
+        matchId: key,
+        match: row.match,
+        count: 0,
+      });
+    }
+    byMatchMap.get(key).count += 1;
+  });
+
+  const byMatch = [...byMatchMap.values()].sort((left, right) => {
+    const leftTime = new Date(left.match?.kickoff || 0).getTime();
+    const rightTime = new Date(right.match?.kickoff || 0).getTime();
+    return leftTime - rightTime || left.matchId.localeCompare(right.matchId);
+  });
+
+  return {
+    total: rows.length,
+    byMatch,
+    users: users
+      .map((user) => ({
+        ...publicUser(user),
+        active: Boolean(user.active),
+        predictions: predictionCountByUser.get(String(user._id)) || 0,
+      }))
+      .sort((left, right) => right.predictions - left.predictions || left.name.localeCompare(right.name, 'es')),
+    rows,
+  };
+}
+
 export async function getLeaderboard() {
   await ensureMongoConnection();
   const [users, predictions, results] = await Promise.all([
