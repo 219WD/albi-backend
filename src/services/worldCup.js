@@ -114,17 +114,75 @@ function matchOutcome(homeScore, awayScore) {
   return 'D';
 }
 
-function scorePrediction(prediction, result) {
-  if (!result) return 0;
-  if (prediction.homeScore === result.homeScore && prediction.awayScore === result.awayScore) return 5;
-
+function scorePredictionDetail(prediction, result) {
   const predictedOutcome = matchOutcome(prediction.homeScore, prediction.awayScore);
-  const realOutcome = matchOutcome(result.homeScore, result.awayScore);
-  if (predictedOutcome !== realOutcome) return -1;
-
   const predictedDiff = prediction.homeScore - prediction.awayScore;
+
+  if (!result) {
+    return {
+      points: null,
+      code: 'pending',
+      reason: 'Pendiente: todavia no hay resultado oficial.',
+      predictedOutcome,
+      realOutcome: null,
+      predictedDiff,
+      realDiff: null,
+    };
+  }
+
+  const realOutcome = matchOutcome(result.homeScore, result.awayScore);
   const realDiff = result.homeScore - result.awayScore;
-  return predictedDiff === realDiff ? 4 : 3;
+
+  if (prediction.homeScore === result.homeScore && prediction.awayScore === result.awayScore) {
+    return {
+      points: 5,
+      code: 'exact',
+      reason: 'Resultado exacto: acerto marcador y ganador.',
+      predictedOutcome,
+      realOutcome,
+      predictedDiff,
+      realDiff,
+    };
+  }
+
+  if (predictedOutcome !== realOutcome) {
+    return {
+      points: -1,
+      code: 'miss',
+      reason: 'No acerto el ganador ni el empate del partido.',
+      predictedOutcome,
+      realOutcome,
+      predictedDiff,
+      realDiff,
+    };
+  }
+
+  if (predictedDiff === realDiff) {
+    return {
+      points: 4,
+      code: 'difference',
+      reason: 'Acerto ganador/empate y diferencia de goles.',
+      predictedOutcome,
+      realOutcome,
+      predictedDiff,
+      realDiff,
+    };
+  }
+
+  return {
+    points: 3,
+    code: 'outcome',
+    reason: 'Acerto ganador/empate, pero no el marcador ni la diferencia.',
+    predictedOutcome,
+    realOutcome,
+    predictedDiff,
+    realDiff,
+  };
+}
+
+function scorePrediction(prediction, result) {
+  const detail = scorePredictionDetail(prediction, result);
+  return detail.points ?? 0;
 }
 
 async function getResultMap() {
@@ -279,6 +337,8 @@ export async function getAdminPredictionAudit(filters = {}) {
 
   const matchId = normalizeText(filters.matchId);
   const userId = normalizeText(filters.userId);
+  const resultStatus = normalizeText(filters.resultStatus);
+  const scoreCode = normalizeText(filters.scoreCode);
   const query = {};
   if (matchId && matchId !== 'all') query.matchId = matchId;
   if (userId && userId !== 'all' && mongoose.Types.ObjectId.isValid(userId)) query.userId = userId;
@@ -297,10 +357,11 @@ export async function getAdminPredictionAudit(filters = {}) {
     predictionCountByUser.set(key, (predictionCountByUser.get(key) || 0) + 1);
   });
 
-  const rows = predictions.map((prediction) => {
+  let rows = predictions.map((prediction) => {
     const match = getMatchById(prediction.matchId);
     const user = userMap.get(String(prediction.userId));
     const result = resultMap.get(prediction.matchId);
+    const score = scorePredictionDetail(prediction, result);
 
     return {
       id: String(prediction._id),
@@ -311,10 +372,51 @@ export async function getAdminPredictionAudit(filters = {}) {
         : { id: String(prediction.userId), name: 'Usuario eliminado', email: '', active: false },
       homeScore: prediction.homeScore,
       awayScore: prediction.awayScore,
-      points: result ? scorePrediction(prediction, result) : null,
+      result: result
+        ? { homeScore: result.homeScore, awayScore: result.awayScore, updatedAt: result.updatedAt || null }
+        : null,
+      points: score.points,
+      score,
       createdAt: prediction.createdAt || null,
       updatedAt: prediction.updatedAt || null,
     };
+  });
+
+  if (resultStatus === 'finished') {
+    rows = rows.filter((row) => Boolean(row.result));
+  }
+
+  if (resultStatus === 'pending') {
+    rows = rows.filter((row) => !row.result);
+  }
+
+  if (scoreCode && scoreCode !== 'all') {
+    rows = rows.filter((row) => row.score?.code === scoreCode);
+  }
+
+  const summary = rows.reduce((acc, row) => {
+    acc.predictions += 1;
+    if (row.points === null || row.points === undefined) {
+      acc.pending += 1;
+      return acc;
+    }
+
+    acc.played += 1;
+    acc.points += row.points;
+    if (row.score?.code === 'exact') acc.exact += 1;
+    if (row.score?.code === 'difference') acc.difference += 1;
+    if (row.score?.code === 'outcome') acc.outcome += 1;
+    if (row.score?.code === 'miss') acc.miss += 1;
+    return acc;
+  }, {
+    predictions: 0,
+    played: 0,
+    pending: 0,
+    points: 0,
+    exact: 0,
+    difference: 0,
+    outcome: 0,
+    miss: 0,
   });
 
   const byMatchMap = new Map();
@@ -338,6 +440,7 @@ export async function getAdminPredictionAudit(filters = {}) {
 
   return {
     total: rows.length,
+    summary,
     byMatch,
     users: users
       .map((user) => ({
