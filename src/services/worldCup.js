@@ -310,11 +310,6 @@ export async function saveMatchResult(matchId, input = {}, admin = {}) {
   const match = getMatchById(matchId);
   if (!match) throw httpError('Partido invalido.', 404);
 
-  const existingResult = await WorldCupResult.findOne({ matchId }).lean();
-  if (existingResult) {
-    throw httpError('El resultado de este partido ya fue cargado y no se puede modificar.', 409);
-  }
-
   const homeScore = Number(input.homeScore);
   const awayScore = Number(input.awayScore);
   if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore) || homeScore < 0 || awayScore < 0 || homeScore > 20 || awayScore > 20) {
