@@ -87,10 +87,29 @@ function toPublicReport(report) {
   };
 }
 
+function reportFingerprint(report = {}) {
+  return JSON.stringify({
+    title: report.title || '',
+    periodLabel: report.periodLabel || '',
+    range: report.range || '',
+    from: report.from || '',
+    to: report.to || '',
+    filters: sanitizeFilters(report.filters),
+  });
+}
+
 export async function listReports() {
   await ensureMongoConnection();
   const reports = await ReportShare.find({}).sort({ createdAt: -1 }).lean();
-  return reports.map(toPublicReport);
+  const seen = new Set();
+  return reports
+    .map(toPublicReport)
+    .filter((report) => {
+      const key = reportFingerprint(report) || report.id || report.token;
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 export async function createReport(input = {}, admin = {}) {

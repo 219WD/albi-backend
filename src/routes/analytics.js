@@ -33,12 +33,18 @@ function parseSheetDate(row) {
 
 function getSheetDateBounds(query) {
   if (query.range === 'custom') {
-    if (!query.from || !query.to) throw new Error('Parametros "from" y "to" requeridos para rango personalizado');
+    if (!query.from || !query.to) {
+      const error = new Error('Parametros "from" y "to" requeridos para rango personalizado');
+      error.statusCode = 400;
+      throw error;
+    }
 
     const from = new Date(`${query.from}T00:00:00`);
     const to = new Date(`${query.to}T23:59:59.999`);
     if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) {
-      throw new Error('Rango de fechas invalido');
+      const error = new Error('Rango de fechas invalido');
+      error.statusCode = 400;
+      throw error;
     }
     return { from, to };
   }
@@ -58,7 +64,65 @@ function normalizeText(value) {
 function titleCase(value) {
   const text = normalizeText(value);
   if (!text || text === '-') return 'Sin dato';
-  return text.replace(/^kit\s+/i, 'Kit ').replace(/\b\w/g, letter => letter.toUpperCase());
+  return text
+    .replace(/^kit\s+/i, 'Kit ')
+    .split(' ')
+    .map((word, index) => {
+      const lower = word.toLocaleLowerCase('es-AR');
+      if (index > 0 && ['de', 'del', 'la', 'el', 'y'].includes(lower)) return lower;
+      return lower ? `${lower.charAt(0).toLocaleUpperCase('es-AR')}${lower.slice(1)}` : lower;
+    })
+    .join(' ');
+}
+
+function formatProductLabel(value) {
+  const text = normalizeText(value);
+  if (!text || text === '-') return 'Sin dato';
+
+  const normalized = canonicalKey(text).replace(/[^a-z0-9]/g, '');
+  const labels = {
+    gps: 'Seguridad Vehicular',
+    kitalarmacamera: 'Kit Alarma y Camara',
+    camaras: 'Camaras',
+    camara: 'Camaras',
+    alarmas: 'Alarmas',
+    alarma: 'Alarmas',
+    incendio: 'Incendio',
+    seguridadintegral: 'Seguridad Integral',
+  };
+
+  return labels[normalized] || titleCase(text);
+}
+
+function formatSystemLabel(product, value) {
+  const label = titleCase(value);
+  if (label === 'Sin dato') return label;
+
+  const productLabel = formatProductLabel(product);
+  const labelKey = canonicalKey(label).replace(/[^a-z0-9]/g, '');
+  const alreadyContextual = ['kit', 'gps', 'camara', 'camara', 'alarma', 'incendio', 'controldeaccesos']
+    .some(prefix => labelKey.startsWith(prefix));
+
+  if (alreadyContextual) return label;
+
+  const genericSystems = new Set(['chico', 'mediano', 'grande', 'personalizado', 'control']);
+  if (!genericSystems.has(labelKey)) return label;
+
+  const productKey = canonicalKey(productLabel).replace(/[^a-z0-9]/g, '');
+  const prefixes = {
+    camaras: 'Camara',
+    camara: 'Camara',
+    alarmas: 'Alarma',
+    alarma: 'Alarma',
+    kitalarmacamara: 'Kit',
+    kitalarmacamaras: 'Kit',
+    seguridadintegral: 'Sistema',
+    gps: 'Seguridad Vehicular',
+    seguridadvehicular: 'Seguridad Vehicular',
+  };
+
+  const prefix = prefixes[productKey];
+  return prefix ? `${prefix} ${label}` : label;
 }
 
 function canonicalKey(value) {
@@ -125,6 +189,38 @@ function countBy(rows, field, formatter = titleCase) {
     }));
 }
 
+function countByProduct(rows, field, formatter = titleCase) {
+  const groups = new Map();
+
+  rows.forEach((row) => {
+    const rawProduct = getField(row, 'producto');
+    const key = canonicalKey(rawProduct);
+    const current = groups.get(key) || {
+      label: formatProductLabel(rawProduct),
+      count: 0,
+      rows: [],
+    };
+
+    current.count += 1;
+    current.rows.push(row);
+    groups.set(key, current);
+  });
+
+  const total = rows.length || 0;
+  return Array.from(groups.values())
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .map(group => ({
+      label: group.label,
+      count: group.count,
+      percent: percent(group.count, total),
+      rows: countBy(
+        group.rows,
+        field,
+        value => (field === 'sistema' ? formatSystemLabel(group.label, value) : formatter(value))
+      ),
+    }));
+}
+
 function buildDailyLeads(rows) {
   const map = new Map();
 
@@ -175,6 +271,10 @@ function isStepRow(row, step) {
 function matchesFilters(row, filters = {}) {
   return Object.entries(filters).every(([field, value]) => {
     if (!value) return true;
+    if (field === 'producto') {
+      return canonicalKey(row[field]) === canonicalKey(value)
+        || canonicalKey(formatProductLabel(row[field])) === canonicalKey(value);
+    }
     return canonicalKey(row[field]) === canonicalKey(value);
   });
 }
@@ -205,7 +305,7 @@ function leadToPublic(row) {
 
 function buildFilterOptions(rows) {
   return {
-    producto: countBy(rows, 'producto', value => normalizeText(value) || 'Sin dato').map(item => item.label),
+    producto: countBy(rows, 'producto', formatProductLabel).map(item => item.label),
     tipo: countBy(rows, 'tipo').map(item => item.label),
     ubicacion: countBy(rows, 'ubicacion').map(item => item.label),
     sistema: countBy(rows, 'sistema').map(item => item.label),
@@ -285,7 +385,9 @@ router.get('/sheet-summary', async (req, res, next) => {
     const byTipo = countBy(leadRows, 'tipo');
     const byUbicacion = countBy(leadRows, 'ubicacion');
     const bySistema = countBy(leadRows, 'sistema');
-    const byProducto = countBy(leadRows, 'producto', value => normalizeText(value) || 'Sin dato');
+    const byProducto = countBy(leadRows, 'producto', formatProductLabel);
+    const tipoPorProducto = countByProduct(leadRows, 'tipo');
+    const sistemaPorProducto = countByProduct(leadRows, 'sistema');
     const withName = leadRows.filter(row => hasMeaningfulValue(row.nombre)).length;
     const withEmail = leadRows.filter(row => isValidEmail(row.email)).length;
     const completeLeads = leadRows.filter(isCompleteLead).length;
@@ -325,6 +427,8 @@ router.get('/sheet-summary', async (req, res, next) => {
         ubicacion: byUbicacion,
         sistema: bySistema,
         producto: byProducto,
+        tipoPorProducto,
+        sistemaPorProducto,
       },
       filterOptions,
       funnel: buildFunnel(filteredRows, leadRows),
