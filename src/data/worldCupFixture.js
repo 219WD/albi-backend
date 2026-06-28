@@ -384,6 +384,150 @@ export const WORLD_CUP_PRIZES = [
 
 export const WORLD_CUP_FIXTURE = [
   {
+    "id": "r32-001",
+    "stage": "Eliminatoria de 32",
+    "round": "round-of-32",
+    "kickoff": "2026-06-28T16:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "RSA",
+    "away": "CAN"
+  },
+  {
+    "id": "r32-002",
+    "stage": "Eliminatoria de 32",
+    "round": "round-of-32",
+    "kickoff": "2026-06-29T14:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "BRA",
+    "away": "JPN"
+  },
+  {
+    "id": "r32-003",
+    "stage": "Eliminatoria de 32",
+    "round": "round-of-32",
+    "kickoff": "2026-06-29T17:30:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "GER",
+    "away": "PAR"
+  },
+  {
+    "id": "r32-004",
+    "stage": "Eliminatoria de 32",
+    "round": "round-of-32",
+    "kickoff": "2026-06-29T22:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "NED",
+    "away": "MAR"
+  },
+  {
+    "id": "r32-005",
+    "stage": "Eliminatoria de 32",
+    "round": "round-of-32",
+    "kickoff": "2026-06-30T14:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "CIV",
+    "away": "NOR"
+  },
+  {
+    "id": "r32-006",
+    "stage": "Eliminatoria de 32",
+    "round": "round-of-32",
+    "kickoff": "2026-06-30T18:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "FRA",
+    "away": "SWE"
+  },
+  {
+    "id": "r32-007",
+    "stage": "Eliminatoria de 32",
+    "round": "round-of-32",
+    "kickoff": "2026-06-30T22:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "MEX",
+    "away": "ECU"
+  },
+  {
+    "id": "r32-008",
+    "stage": "Eliminatoria de 32",
+    "round": "round-of-32",
+    "kickoff": "2026-07-01T13:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "ENG",
+    "away": "COD"
+  },
+  {
+    "id": "r32-009",
+    "stage": "Eliminatoria de 32",
+    "round": "round-of-32",
+    "kickoff": "2026-07-01T17:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "BEL",
+    "away": "SEN"
+  },
+  {
+    "id": "r32-010",
+    "stage": "Eliminatoria de 32",
+    "round": "round-of-32",
+    "kickoff": "2026-07-01T21:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "USA",
+    "away": "BIH"
+  },
+  {
+    "id": "r32-011",
+    "stage": "Eliminatoria de 32",
+    "round": "round-of-32",
+    "kickoff": "2026-07-02T16:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "ESP",
+    "away": "AUT"
+  },
+  {
+    "id": "r32-012",
+    "stage": "Eliminatoria de 32",
+    "round": "round-of-32",
+    "kickoff": "2026-07-02T20:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "POR",
+    "away": "CRO"
+  },
+  {
+    "id": "r32-013",
+    "stage": "Eliminatoria de 32",
+    "round": "round-of-32",
+    "kickoff": "2026-07-03T00:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "SUI",
+    "away": "ALG"
+  },
+  {
+    "id": "r32-014",
+    "stage": "Eliminatoria de 32",
+    "round": "round-of-32",
+    "kickoff": "2026-07-03T15:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "AUS",
+    "away": "EGY"
+  },
+  {
+    "id": "r32-015",
+    "stage": "Eliminatoria de 32",
+    "round": "round-of-32",
+    "kickoff": "2026-07-03T19:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "ARG",
+    "away": "CPV"
+  },
+  {
+    "id": "r32-016",
+    "stage": "Eliminatoria de 32",
+    "round": "round-of-32",
+    "kickoff": "2026-07-03T22:30:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "COL",
+    "away": "GHA"
+  },
+  {
     "id": "m001",
     "group": "A",
     "stage": "Grupos",
