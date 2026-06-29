@@ -50,6 +50,7 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 app.use(express.json());
 app.use('/meta', express.text({ type: 'text/plain' }));
+app.use('/api/events', express.text({ type: 'text/plain' }));
 
 app.use('/meta', rateLimit({
   windowMs: 60 * 1000,
@@ -57,6 +58,12 @@ app.use('/meta', rateLimit({
   message: { error: 'Demasiados eventos, espera un minuto.' },
 }));
 app.use('/meta', metaCapiRoutes);
+app.use('/api/events', rateLimit({
+  windowMs: 60 * 1000,
+  max: 3000,
+  message: { error: 'Demasiados eventos, espera un minuto.' },
+}));
+app.use('/api/events', metaCapiRoutes);
 
 app.use('/api', rateLimit({
   windowMs: 60 * 1000,

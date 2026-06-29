@@ -126,7 +126,42 @@ export async function updateLeadStatusByRow(rowNumber, status) {
 }
 
 export async function appendLeadEventToSheet(lead = {}) {
-  const { headers, headerIndexes } = await getSheetSnapshot();
+  const snapshot = await getSheetSnapshot();
+  const headers = [...snapshot.headers];
+  const headerIndexes = { ...snapshot.headerIndexes };
+  const requiredHeaders = [
+    'marca_temporal',
+    'timestamp',
+    'event_name',
+    'email',
+    'nombre',
+    'telefono',
+    'codigo',
+    'tipo',
+    'ubicacion',
+    'sistema',
+    'producto',
+    'bienvenida_enviada',
+  ];
+
+  const missingHeaders = requiredHeaders.filter((header) => headerIndexes[header] === undefined);
+  if (missingHeaders.length > 0) {
+    const startColumn = headers.length;
+    missingHeaders.forEach((header, offset) => {
+      headerIndexes[header] = startColumn + offset;
+      headers.push(header);
+    });
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: process.env.SPREADSHEET_ID,
+      range: `${SHEET_NAME}!${toColumnLetter(startColumn)}1:${toColumnLetter(headers.length - 1)}1`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [missingHeaders],
+      },
+    });
+  }
+
   const now = new Date().toISOString();
   const row = Array.from({ length: headers.length }, () => '');
 
@@ -142,6 +177,7 @@ export async function appendLeadEventToSheet(lead = {}) {
   setValue('event_name', lead.eventName);
   setValue('email', lead.email || '-');
   setValue('nombre', lead.nombre || '-');
+  setValue('telefono', lead.telefono || '-');
   setValue('codigo', lead.codigo || '-');
   setValue('tipo', lead.tipo);
   setValue('ubicacion', lead.ubicacion);

@@ -56,6 +56,7 @@ function getNewsletterRecipientsFromRows(rows) {
     .map((row, index) => ({
       email: String(row.email || '').trim().toLowerCase(),
       nombre: String(row.nombre || '').trim(),
+      telefono: String(row.telefono || row.tel || row.phone || row.whatsapp || row.celular || '').trim(),
       bienvenida: String(row.bienvenida_enviada || '').trim().toLowerCase(),
       source: 'google_sheets',
       sources: ['google_sheets'],
@@ -69,6 +70,7 @@ function serializeLeadRecipient(lead = {}) {
   return {
     email: String(lead.email || '').trim().toLowerCase(),
     nombre: String(lead.nombre || '').trim(),
+    telefono: String(lead.telefono || '').trim(),
     bienvenida: lead.unsubscribed ? 'cancelado' : '',
     source: 'mongodb',
     sources: ['mongodb'],
@@ -146,6 +148,7 @@ function getUniqueRecipients(recipients = []) {
 export async function saveEmailMarketingLead(input = {}) {
   const email = String(input.email || '').trim().toLowerCase();
   const nombre = String(input.nombre || '').trim();
+  const telefono = String(input.telefono || '').replace(/\D/g, '');
 
   if (!isValidEmail(email)) {
     const error = new Error('Ingresa un email valido.');
@@ -160,6 +163,7 @@ export async function saveEmailMarketingLead(input = {}) {
     {
       $set: {
         nombre,
+        telefono,
         codigo: String(input.codigo || '').trim(),
         source: String(input.source || 'website').trim(),
         promoId: String(input.promoId || '').trim(),
@@ -191,7 +195,7 @@ async function getNewsletterRecipients() {
   }
   const leads = await Lead.find({ unsubscribed: { $ne: true } })
     .sort({ updatedAt: -1 })
-    .select('email nombre unsubscribed tipo ubicacion sistema producto createdAt updatedAt')
+    .select('email nombre telefono unsubscribed tipo ubicacion sistema producto createdAt updatedAt')
     .lean();
   const worldCupUsers = await WorldCupUser.find({ active: { $ne: false } })
     .sort({ updatedAt: -1 })

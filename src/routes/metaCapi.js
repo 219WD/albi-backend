@@ -39,6 +39,14 @@ const normalizeName = (value = '') =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 
+const normalizePhone = (value = '') => {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('549')) return digits;
+  if (digits.startsWith('54')) return `549${digits.slice(2)}`;
+  return `549${digits}`;
+};
+
 const sha256 = (value = '') =>
   crypto
     .createHash('sha256')
@@ -47,15 +55,27 @@ const sha256 = (value = '') =>
 
 const buildAdvancedUserData = ({ customData = {}, userData = {} }) => {
   const email = normalizeEmail(userData.em || userData.email || customData.email);
+  const phone = normalizePhone(userData.ph || userData.phone || customData.telefono || customData.phone);
   const nombre = normalizeName(userData.nombre || customData.nombre);
   const nameParts = nombre.split(/\s+/).filter(Boolean);
   const firstName = normalizeName(userData.fn) || nameParts[0] || '';
   const lastName = normalizeName(userData.ln) || (nameParts.length > 1 ? nameParts.slice(1).join(' ') : '');
+  const city = normalizeName(userData.ct || customData.ciudad || customData.ubicacion);
+  const state = normalizeName(userData.st || customData.provincia || 'Tucuman');
+  const country = normalizeName(userData.country || customData.pais || 'ar');
+  const zip = String(userData.zp || customData.codigo_postal || customData.cp || '4000').trim().toLowerCase();
+  const externalId = String(userData.external_id || customData.external_id || '').trim();
 
   return cleanObject({
     em: email ? [sha256(email)] : undefined,
+    ph: phone ? [sha256(phone)] : undefined,
     fn: firstName ? [sha256(firstName)] : undefined,
     ln: lastName ? [sha256(lastName)] : undefined,
+    ct: city ? [sha256(city)] : undefined,
+    st: state ? [sha256(state)] : undefined,
+    country: country ? [sha256(country)] : undefined,
+    zp: zip ? [sha256(zip)] : undefined,
+    external_id: externalId || undefined,
   });
 };
 
@@ -63,6 +83,14 @@ const stripMetaCustomData = (customData = {}) => {
   const {
     email,
     nombre,
+    telefono,
+    phone,
+    ciudad,
+    provincia,
+    pais,
+    codigo_postal: codigoPostal,
+    cp,
+    external_id: externalId,
     codigo,
     bienvenida_enviada: bienvenidaEnviada,
     ...safeCustomData
@@ -102,7 +130,7 @@ const inferProductFromEvent = (eventName) => {
   return 'KitAlarmaCamara';
 };
 
-router.post('/capi', async (req, res, next) => {
+const handleCapiEvent = async (req, res, next) => {
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
     const pixelId = process.env.META_PIXEL_ID;
@@ -167,6 +195,7 @@ router.post('/capi', async (req, res, next) => {
         await saveEmailMarketingLead({
           email: leadEmail,
           nombre: normalizedCustomData?.nombre || browserUserData?.nombre,
+          telefono: normalizedCustomData?.telefono || normalizedCustomData?.phone || browserUserData?.ph,
           codigo: normalizedCustomData?.codigo,
           source: String(eventName || '').startsWith('Promo_') ? 'promo' : 'meta_capi',
           promoId: normalizedCustomData?.promo_id,
@@ -187,6 +216,7 @@ router.post('/capi', async (req, res, next) => {
           eventName,
           email: normalizedCustomData?.email,
           nombre: normalizedCustomData?.nombre,
+          telefono: normalizedCustomData?.telefono || normalizedCustomData?.phone || browserUserData?.ph,
           codigo: normalizedCustomData?.codigo,
           tipo: normalizedCustomData?.tipo,
           ubicacion: normalizedCustomData?.ubicacion,
@@ -208,7 +238,10 @@ router.post('/capi', async (req, res, next) => {
   } catch (err) {
     return next(err);
   }
-});
+};
+
+router.post('/capi', handleCapiEvent);
+router.post('/track', handleCapiEvent);
 
 export default router;
 
