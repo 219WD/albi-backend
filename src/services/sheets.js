@@ -3,6 +3,7 @@ import { google } from 'googleapis';
 
 const SHEET_NAME = process.env.SPREADSHEET_SHEET_NAME || 'Respuestas de formulario 1';
 const SHEET_RANGE = `${SHEET_NAME}!A:ZZ`;
+const LEAD_STATUS_OPTIONS = ['Nuevo', 'Contactado', 'Cotizado', 'Vendido', 'Perdido'];
 
 function hasRealEnvValue(value) {
   const normalized = String(value || '').trim();
@@ -39,6 +40,7 @@ function createGoogleAuth() {
 
 const auth = createGoogleAuth();
 const sheets = google.sheets({ version: 'v4', auth });
+let cachedSheetId;
 
 function normalizeHeader(value) {
   return String(value || '')
@@ -70,6 +72,58 @@ function toColumnLetter(index) {
   }
 
   return column;
+}
+
+async function getSheetId() {
+  if (cachedSheetId !== undefined) {
+    return cachedSheetId;
+  }
+
+  const response = await sheets.spreadsheets.get({
+    spreadsheetId: process.env.SPREADSHEET_ID,
+    fields: 'sheets(properties(sheetId,title))',
+  });
+
+  const sheet = response.data.sheets?.find((item) => item.properties?.title === SHEET_NAME);
+  cachedSheetId = sheet?.properties?.sheetId;
+  return cachedSheetId;
+}
+
+async function ensureLeadStatusValidation(columnIndex) {
+  const sheetId = await getSheetId();
+  if (sheetId === undefined) {
+    return;
+  }
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: process.env.SPREADSHEET_ID,
+    requestBody: {
+      requests: [
+        {
+          setDataValidation: {
+            range: {
+              sheetId,
+              startRowIndex: 1,
+              startColumnIndex: columnIndex,
+              endColumnIndex: columnIndex + 1,
+            },
+            rule: {
+              condition: {
+                type: 'ONE_OF_LIST',
+                values: LEAD_STATUS_OPTIONS.map((status) => ({ userEnteredValue: status })),
+              },
+              strict: true,
+              showCustomUi: true,
+            },
+          },
+        },
+      ],
+    },
+  });
+}
+
+function warnStatusValidation(error) {
+  console.warn('[Sheets] No se pudo configurar el dropdown de estado_lead:', error.message);
 }
 
 export async function getSheetSnapshot() {
@@ -115,6 +169,8 @@ export async function updateLeadStatusByRow(rowNumber, status) {
     });
   }
 
+  await ensureLeadStatusValidation(columnIndex).catch(warnStatusValidation);
+
   await sheets.spreadsheets.values.update({
     spreadsheetId: process.env.SPREADSHEET_ID,
     range: `${SHEET_NAME}!${toColumnLetter(columnIndex)}${rowNumber}`,
@@ -141,6 +197,7 @@ export async function appendLeadEventToSheet(lead = {}) {
     'ubicacion',
     'sistema',
     'producto',
+    'estado_lead',
     'bienvenida_enviada',
   ];
 
@@ -160,6 +217,11 @@ export async function appendLeadEventToSheet(lead = {}) {
         values: [missingHeaders],
       },
     });
+  }
+
+  const statusColumnIndex = headerIndexes.estado_lead;
+  if (statusColumnIndex !== undefined) {
+    await ensureLeadStatusValidation(statusColumnIndex).catch(warnStatusValidation);
   }
 
   const now = new Date().toISOString();
@@ -183,6 +245,7 @@ export async function appendLeadEventToSheet(lead = {}) {
   setValue('ubicacion', lead.ubicacion);
   setValue('sistema', lead.sistema);
   setValue('producto', lead.producto);
+  setValue('estado_lead', lead.estado || 'Nuevo');
   setValue('bienvenida_enviada', lead.bienvenidaEnviada || '');
 
   await sheets.spreadsheets.values.append({
