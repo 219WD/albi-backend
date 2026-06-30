@@ -102,7 +102,13 @@ function serializeMatch(match, resultMap = new Map()) {
     homeTeam: teamPayload(match.home),
     awayTeam: teamPayload(match.away),
     result: result
-      ? { homeScore: result.homeScore, awayScore: result.awayScore, updatedAt: result.updatedAt || null }
+      ? {
+          homeScore: result.homeScore,
+          awayScore: result.awayScore,
+          homePenaltyScore: result.homePenaltyScore ?? null,
+          awayPenaltyScore: result.awayPenaltyScore ?? null,
+          updatedAt: result.updatedAt || null,
+        }
       : null,
     locked: new Date(match.kickoff).getTime() <= Date.now(),
   };
@@ -316,9 +322,38 @@ export async function saveMatchResult(matchId, input = {}, admin = {}) {
     throw httpError('Resultado invalido.', 400);
   }
 
+  const hasHomePenalty = input.homePenaltyScore !== '' && input.homePenaltyScore !== null && input.homePenaltyScore !== undefined;
+  const hasAwayPenalty = input.awayPenaltyScore !== '' && input.awayPenaltyScore !== null && input.awayPenaltyScore !== undefined;
+  let homePenaltyScore = null;
+  let awayPenaltyScore = null;
+
+  if (homeScore === awayScore && (hasHomePenalty || hasAwayPenalty)) {
+    homePenaltyScore = Number(input.homePenaltyScore);
+    awayPenaltyScore = Number(input.awayPenaltyScore);
+    if (
+      !Number.isInteger(homePenaltyScore)
+      || !Number.isInteger(awayPenaltyScore)
+      || homePenaltyScore < 0
+      || awayPenaltyScore < 0
+      || homePenaltyScore > 20
+      || awayPenaltyScore > 20
+    ) {
+      throw httpError('Penales invalidos.', 400);
+    }
+    if (homePenaltyScore === awayPenaltyScore) {
+      throw httpError('Los penales no pueden quedar empatados.', 400);
+    }
+  }
+
   const result = await WorldCupResult.findOneAndUpdate(
     { matchId },
-    { homeScore, awayScore, updatedBy: admin.username || admin.email || '' },
+    {
+      homeScore,
+      awayScore,
+      homePenaltyScore,
+      awayPenaltyScore,
+      updatedBy: admin.username || admin.email || '',
+    },
     { upsert: true, new: true, runValidators: true },
   );
 
@@ -368,7 +403,13 @@ export async function getAdminPredictionAudit(filters = {}) {
       homeScore: prediction.homeScore,
       awayScore: prediction.awayScore,
       result: result
-        ? { homeScore: result.homeScore, awayScore: result.awayScore, updatedAt: result.updatedAt || null }
+        ? {
+            homeScore: result.homeScore,
+            awayScore: result.awayScore,
+            homePenaltyScore: result.homePenaltyScore ?? null,
+            awayPenaltyScore: result.awayPenaltyScore ?? null,
+            updatedAt: result.updatedAt || null,
+          }
         : null,
       points: score.points,
       score,
