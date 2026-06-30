@@ -496,6 +496,7 @@ export async function getLeaderboard() {
     WorldCupPrediction.find({}).lean(),
     WorldCupResult.find({}).lean(),
   ]);
+  const fixtureMatchIds = new Set(WORLD_CUP_FIXTURE.map((match) => match.id));
   const resultMap = new Map(results.map((result) => [result.matchId, result]));
   const userMap = new Map(users.map((user) => [String(user._id), user]));
   const rows = users.map((user) => ({
@@ -504,6 +505,9 @@ export async function getLeaderboard() {
     exact: 0,
     played: 0,
     predictions: 0,
+    fixturePredictions: 0,
+    stalePredictions: 0,
+    totalMatches: WORLD_CUP_FIXTURE.length,
   }));
   const rowMap = new Map(rows.map((row) => [row.user.id, row]));
 
@@ -514,6 +518,11 @@ export async function getLeaderboard() {
     const row = rowMap.get(userId);
     const result = resultMap.get(prediction.matchId);
     row.predictions += 1;
+    if (fixtureMatchIds.has(prediction.matchId)) {
+      row.fixturePredictions += 1;
+    } else {
+      row.stalePredictions += 1;
+    }
     if (!result) return;
 
     const points = scorePrediction(prediction, result);
