@@ -528,6 +528,78 @@ export const WORLD_CUP_FIXTURE = [
     "away": "GHA"
   },
   {
+    "id": "r16-001",
+    "stage": "Octavos de final",
+    "round": "round-of-16",
+    "kickoff": "2026-07-04T14:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "CAN",
+    "away": "MAR"
+  },
+  {
+    "id": "r16-002",
+    "stage": "Octavos de final",
+    "round": "round-of-16",
+    "kickoff": "2026-07-04T18:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "PAR",
+    "away": "FRA"
+  },
+  {
+    "id": "r16-003",
+    "stage": "Octavos de final",
+    "round": "round-of-16",
+    "kickoff": "2026-07-05T17:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "BRA",
+    "away": "NOR"
+  },
+  {
+    "id": "r16-004",
+    "stage": "Octavos de final",
+    "round": "round-of-16",
+    "kickoff": "2026-07-05T21:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "MEX",
+    "away": "ENG"
+  },
+  {
+    "id": "r16-005",
+    "stage": "Octavos de final",
+    "round": "round-of-16",
+    "kickoff": "2026-07-06T16:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "POR",
+    "away": "ESP"
+  },
+  {
+    "id": "r16-006",
+    "stage": "Octavos de final",
+    "round": "round-of-16",
+    "kickoff": "2026-07-06T21:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "USA",
+    "away": "BEL"
+  },
+  {
+    "id": "r16-007",
+    "stage": "Octavos de final",
+    "round": "round-of-16",
+    "kickoff": "2026-07-07T13:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "ARG",
+    "away": "EGY"
+  },
+  {
+    "id": "r16-008",
+    "stage": "Octavos de final",
+    "round": "round-of-16",
+    "kickoff": "2026-07-07T17:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "SUI",
+    "away": "COL"
+  },
+  {
     "id": "m001",
     "group": "A",
     "stage": "Grupos",

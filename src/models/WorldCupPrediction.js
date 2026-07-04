@@ -24,6 +24,18 @@ const worldCupPredictionSchema = new mongoose.Schema({
     min: 0,
     max: 20,
   },
+  homePenaltyScore: {
+    type: Number,
+    min: 0,
+    max: 20,
+    default: null,
+  },
+  awayPenaltyScore: {
+    type: Number,
+    min: 0,
+    max: 20,
+    default: null,
+  },
 }, {
   timestamps: true,
 });

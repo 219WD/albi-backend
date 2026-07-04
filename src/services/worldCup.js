@@ -120,8 +120,75 @@ function matchOutcome(homeScore, awayScore) {
   return 'D';
 }
 
+function hasScoreValue(value) {
+  return value !== '' && value !== null && value !== undefined;
+}
+
+function isKnockoutMatch(match = {}) {
+  return ['round-of-32', 'round-of-16'].includes(match.round)
+    || ['Eliminatoria de 32', 'Octavos de final'].includes(match.stage);
+}
+
+function matchOutcomeWithPenalties(entry) {
+  const regularOutcome = matchOutcome(entry.homeScore, entry.awayScore);
+  if (regularOutcome !== 'D') return regularOutcome;
+
+  if (hasScoreValue(entry.homePenaltyScore) && hasScoreValue(entry.awayPenaltyScore)) {
+    if (entry.homePenaltyScore > entry.awayPenaltyScore) return 'H';
+    if (entry.homePenaltyScore < entry.awayPenaltyScore) return 'A';
+  }
+
+  return 'D';
+}
+
+function serializePrediction(prediction, resultMap = new Map()) {
+  return {
+    id: String(prediction._id),
+    matchId: prediction.matchId,
+    homeScore: prediction.homeScore,
+    awayScore: prediction.awayScore,
+    homePenaltyScore: prediction.homePenaltyScore ?? null,
+    awayPenaltyScore: prediction.awayPenaltyScore ?? null,
+    points: scorePrediction(prediction, resultMap.get(prediction.matchId)),
+    updatedAt: prediction.updatedAt || null,
+  };
+}
+
+function parsePenaltyScores(input = {}, homeScore, awayScore, { required = false } = {}) {
+  const hasHomePenalty = hasScoreValue(input.homePenaltyScore);
+  const hasAwayPenalty = hasScoreValue(input.awayPenaltyScore);
+  let homePenaltyScore = null;
+  let awayPenaltyScore = null;
+
+  if (homeScore !== awayScore) return { homePenaltyScore, awayPenaltyScore };
+
+  if (required && (!hasHomePenalty || !hasAwayPenalty)) {
+    throw httpError('Carga los penales para definir el ganador.', 400);
+  }
+
+  if (hasHomePenalty || hasAwayPenalty) {
+    homePenaltyScore = Number(input.homePenaltyScore);
+    awayPenaltyScore = Number(input.awayPenaltyScore);
+    if (
+      !Number.isInteger(homePenaltyScore)
+      || !Number.isInteger(awayPenaltyScore)
+      || homePenaltyScore < 0
+      || awayPenaltyScore < 0
+      || homePenaltyScore > 20
+      || awayPenaltyScore > 20
+    ) {
+      throw httpError('Penales invalidos.', 400);
+    }
+    if (homePenaltyScore === awayPenaltyScore) {
+      throw httpError('Los penales no pueden quedar empatados.', 400);
+    }
+  }
+
+  return { homePenaltyScore, awayPenaltyScore };
+}
+
 function scorePredictionDetail(prediction, result) {
-  const predictedOutcome = matchOutcome(prediction.homeScore, prediction.awayScore);
+  const predictedOutcome = matchOutcomeWithPenalties(prediction);
   const predictedDiff = prediction.homeScore - prediction.awayScore;
 
   if (!result) {
@@ -136,14 +203,23 @@ function scorePredictionDetail(prediction, result) {
     };
   }
 
-  const realOutcome = matchOutcome(result.homeScore, result.awayScore);
+  const realOutcome = matchOutcomeWithPenalties(result);
   const realDiff = result.homeScore - result.awayScore;
+  const resultHasPenalties = hasScoreValue(result.homePenaltyScore) && hasScoreValue(result.awayPenaltyScore);
+  const predictionHasPenalties = hasScoreValue(prediction.homePenaltyScore) && hasScoreValue(prediction.awayPenaltyScore);
+  const exactPenalties = !resultHasPenalties || (
+    predictionHasPenalties
+    && prediction.homePenaltyScore === result.homePenaltyScore
+    && prediction.awayPenaltyScore === result.awayPenaltyScore
+  );
 
-  if (prediction.homeScore === result.homeScore && prediction.awayScore === result.awayScore) {
+  if (prediction.homeScore === result.homeScore && prediction.awayScore === result.awayScore && exactPenalties) {
     return {
       points: 5,
       code: 'exact',
-      reason: 'Resultado exacto: acerto marcador y ganador.',
+      reason: resultHasPenalties
+        ? 'Resultado exacto: acerto marcador, penales y ganador.'
+        : 'Resultado exacto: acerto marcador y ganador.',
       predictedOutcome,
       realOutcome,
       predictedDiff,
@@ -269,12 +345,7 @@ export async function getUserPredictions(userId) {
   const resultMap = await getResultMap();
 
   return predictions.map((prediction) => ({
-    id: String(prediction._id),
-    matchId: prediction.matchId,
-    homeScore: prediction.homeScore,
-    awayScore: prediction.awayScore,
-    points: scorePrediction(prediction, resultMap.get(prediction.matchId)),
-    updatedAt: prediction.updatedAt || null,
+    ...serializePrediction(prediction, resultMap),
   }));
 }
 
@@ -289,6 +360,9 @@ export async function savePrediction(userId, matchId, input = {}) {
   if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore) || homeScore < 0 || awayScore < 0 || homeScore > 20 || awayScore > 20) {
     throw httpError('Resultado invalido.', 400);
   }
+  const { homePenaltyScore, awayPenaltyScore } = parsePenaltyScores(input, homeScore, awayScore, {
+    required: isKnockoutMatch(match),
+  });
 
   const existingPrediction = await WorldCupPrediction.findOne({ userId, matchId }).lean();
   if (existingPrediction) {
@@ -300,15 +374,11 @@ export async function savePrediction(userId, matchId, input = {}) {
     matchId,
     homeScore,
     awayScore,
+    homePenaltyScore,
+    awayPenaltyScore,
   });
 
-  return {
-    id: String(prediction._id),
-    matchId: prediction.matchId,
-    homeScore: prediction.homeScore,
-    awayScore: prediction.awayScore,
-    updatedAt: prediction.updatedAt || null,
-  };
+  return serializePrediction(prediction);
 }
 
 export async function saveMatchResult(matchId, input = {}, admin = {}) {
@@ -322,28 +392,9 @@ export async function saveMatchResult(matchId, input = {}, admin = {}) {
     throw httpError('Resultado invalido.', 400);
   }
 
-  const hasHomePenalty = input.homePenaltyScore !== '' && input.homePenaltyScore !== null && input.homePenaltyScore !== undefined;
-  const hasAwayPenalty = input.awayPenaltyScore !== '' && input.awayPenaltyScore !== null && input.awayPenaltyScore !== undefined;
-  let homePenaltyScore = null;
-  let awayPenaltyScore = null;
-
-  if (homeScore === awayScore && (hasHomePenalty || hasAwayPenalty)) {
-    homePenaltyScore = Number(input.homePenaltyScore);
-    awayPenaltyScore = Number(input.awayPenaltyScore);
-    if (
-      !Number.isInteger(homePenaltyScore)
-      || !Number.isInteger(awayPenaltyScore)
-      || homePenaltyScore < 0
-      || awayPenaltyScore < 0
-      || homePenaltyScore > 20
-      || awayPenaltyScore > 20
-    ) {
-      throw httpError('Penales invalidos.', 400);
-    }
-    if (homePenaltyScore === awayPenaltyScore) {
-      throw httpError('Los penales no pueden quedar empatados.', 400);
-    }
-  }
+  const { homePenaltyScore, awayPenaltyScore } = parsePenaltyScores(input, homeScore, awayScore, {
+    required: isKnockoutMatch(match),
+  });
 
   const result = await WorldCupResult.findOneAndUpdate(
     { matchId },
@@ -402,6 +453,8 @@ export async function getAdminPredictionAudit(filters = {}) {
         : { id: String(prediction.userId), name: 'Usuario eliminado', email: '', active: false },
       homeScore: prediction.homeScore,
       awayScore: prediction.awayScore,
+      homePenaltyScore: prediction.homePenaltyScore ?? null,
+      awayPenaltyScore: prediction.awayPenaltyScore ?? null,
       result: result
         ? {
             homeScore: result.homeScore,
