@@ -92,15 +92,68 @@ function getMatchById(matchId) {
 }
 
 function teamPayload(code) {
+  if (!code) return { code: '', name: 'A definir', flag: '' };
   return WORLD_CUP_TEAMS[code] || { code, name: code, flag: '🏳️' };
+}
+
+function getWinnerCode(match, resultMap = new Map()) {
+  if (!match) return '';
+  const result = resultMap.get(match.id);
+  if (!result) return '';
+  const homeCode = resolveMatchTeamCode(match, 'home', resultMap);
+  const awayCode = resolveMatchTeamCode(match, 'away', resultMap);
+
+  if (result.homeScore > result.awayScore) return homeCode;
+  if (result.awayScore > result.homeScore) return awayCode;
+  if (hasScoreValue(result.homePenaltyScore) && hasScoreValue(result.awayPenaltyScore)) {
+    return result.homePenaltyScore > result.awayPenaltyScore ? homeCode : awayCode;
+  }
+
+  return '';
+}
+
+function getLoserCode(match, resultMap = new Map()) {
+  if (!match) return '';
+  const result = resultMap.get(match.id);
+  if (!result) return '';
+  const homeCode = resolveMatchTeamCode(match, 'home', resultMap);
+  const awayCode = resolveMatchTeamCode(match, 'away', resultMap);
+
+  if (result.homeScore > result.awayScore) return awayCode;
+  if (result.awayScore > result.homeScore) return homeCode;
+  if (hasScoreValue(result.homePenaltyScore) && hasScoreValue(result.awayPenaltyScore)) {
+    return result.homePenaltyScore > result.awayPenaltyScore ? awayCode : homeCode;
+  }
+
+  return '';
+}
+
+function resolveParticipant(source, resultMap = new Map()) {
+  if (!source?.matchId) return '';
+  const sourceMatch = getMatchById(source.matchId);
+  if (!sourceMatch) return '';
+  return source.outcome === 'loser'
+    ? getLoserCode(sourceMatch, resultMap)
+    : getWinnerCode(sourceMatch, resultMap);
+}
+
+function resolveMatchTeamCode(match, side, resultMap = new Map()) {
+  const directCode = match[side];
+  if (directCode) return directCode;
+  return resolveParticipant(match[`${side}Source`], resultMap);
 }
 
 function serializeMatch(match, resultMap = new Map()) {
   const result = resultMap.get(match.id);
+  const home = resolveMatchTeamCode(match, 'home', resultMap);
+  const away = resolveMatchTeamCode(match, 'away', resultMap);
   return {
     ...match,
-    homeTeam: teamPayload(match.home),
-    awayTeam: teamPayload(match.away),
+    home,
+    away,
+    homeTeam: teamPayload(home),
+    awayTeam: teamPayload(away),
+    ready: Boolean(home && away),
     result: result
       ? {
           homeScore: result.homeScore,
@@ -125,8 +178,8 @@ function hasScoreValue(value) {
 }
 
 function isKnockoutMatch(match = {}) {
-  return ['round-of-32', 'round-of-16'].includes(match.round)
-    || ['Eliminatoria de 32', 'Octavos de final'].includes(match.stage);
+  return ['round-of-32', 'round-of-16', 'quarter-final', 'semi-final', 'third-place', 'final'].includes(match.round)
+    || ['Eliminatoria de 32', 'Octavos de final', 'Cuartos de final', 'Semifinales', 'Eliminatoria por el tercer lugar', 'Final'].includes(match.stage);
 }
 
 function matchOutcomeWithPenalties(entry) {
@@ -354,6 +407,9 @@ export async function savePrediction(userId, matchId, input = {}) {
   const match = getMatchById(matchId);
   if (!match) throw httpError('Partido invalido.', 404);
   if (new Date(match.kickoff).getTime() <= Date.now()) throw httpError('Este partido ya esta bloqueado.', 409);
+  const resultMap = await getResultMap();
+  const serializedMatch = serializeMatch(match, resultMap);
+  if (!serializedMatch.ready) throw httpError('Este partido todavia no tiene equipos definidos.', 409);
 
   const homeScore = Number(input.homeScore);
   const awayScore = Number(input.awayScore);
@@ -385,6 +441,9 @@ export async function saveMatchResult(matchId, input = {}, admin = {}) {
   await ensureMongoConnection();
   const match = getMatchById(matchId);
   if (!match) throw httpError('Partido invalido.', 404);
+  const resultMap = await getResultMap();
+  const serializedMatch = serializeMatch(match, resultMap);
+  if (!serializedMatch.ready) throw httpError('Este partido todavia no tiene equipos definidos.', 409);
 
   const homeScore = Number(input.homeScore);
   const awayScore = Number(input.awayScore);

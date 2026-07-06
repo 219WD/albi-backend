@@ -600,6 +600,78 @@ export const WORLD_CUP_FIXTURE = [
     "away": "COL"
   },
   {
+    "id": "qf-001",
+    "stage": "Cuartos de final",
+    "round": "quarter-final",
+    "kickoff": "2026-07-09T17:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "FRA",
+    "away": "MAR"
+  },
+  {
+    "id": "qf-002",
+    "stage": "Cuartos de final",
+    "round": "quarter-final",
+    "kickoff": "2026-07-10T16:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "homeSource": { "matchId": "r16-005", "outcome": "winner" },
+    "awaySource": { "matchId": "r16-006", "outcome": "winner" }
+  },
+  {
+    "id": "qf-003",
+    "stage": "Cuartos de final",
+    "round": "quarter-final",
+    "kickoff": "2026-07-11T18:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "home": "NOR",
+    "away": "ENG"
+  },
+  {
+    "id": "qf-004",
+    "stage": "Cuartos de final",
+    "round": "quarter-final",
+    "kickoff": "2026-07-11T22:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "homeSource": { "matchId": "r16-007", "outcome": "winner" },
+    "awaySource": { "matchId": "r16-008", "outcome": "winner" }
+  },
+  {
+    "id": "sf-001",
+    "stage": "Semifinales",
+    "round": "semi-final",
+    "kickoff": "2026-07-14T16:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "homeSource": { "matchId": "qf-001", "outcome": "winner" },
+    "awaySource": { "matchId": "qf-002", "outcome": "winner" }
+  },
+  {
+    "id": "sf-002",
+    "stage": "Semifinales",
+    "round": "semi-final",
+    "kickoff": "2026-07-15T16:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "homeSource": { "matchId": "qf-003", "outcome": "winner" },
+    "awaySource": { "matchId": "qf-004", "outcome": "winner" }
+  },
+  {
+    "id": "third-001",
+    "stage": "Eliminatoria por el tercer lugar",
+    "round": "third-place",
+    "kickoff": "2026-07-18T18:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "homeSource": { "matchId": "sf-001", "outcome": "loser" },
+    "awaySource": { "matchId": "sf-002", "outcome": "loser" }
+  },
+  {
+    "id": "final-001",
+    "stage": "Final",
+    "round": "final",
+    "kickoff": "2026-07-19T16:00:00-03:00",
+    "venue": "Sede por confirmar",
+    "homeSource": { "matchId": "sf-001", "outcome": "winner" },
+    "awaySource": { "matchId": "sf-002", "outcome": "winner" }
+  },
+  {
     "id": "m001",
     "group": "A",
     "stage": "Grupos",
