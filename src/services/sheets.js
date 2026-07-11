@@ -192,6 +192,7 @@ export async function appendLeadEventToSheet(lead = {}) {
     'email',
     'nombre',
     'telefono',
+    'lead_id',
     'codigo',
     'tipo',
     'ubicacion',
@@ -240,7 +241,8 @@ export async function appendLeadEventToSheet(lead = {}) {
   setValue('email', lead.email || '-');
   setValue('nombre', lead.nombre || '-');
   setValue('telefono', lead.telefono || '-');
-  setValue('codigo', lead.codigo || '-');
+  setValue('lead_id', lead.leadId || lead.lead_id || lead.codigo || '-');
+  setValue('codigo', lead.codigo || lead.leadId || lead.lead_id || '-');
   setValue('tipo', lead.tipo);
   setValue('ubicacion', lead.ubicacion);
   setValue('sistema', lead.sistema);
