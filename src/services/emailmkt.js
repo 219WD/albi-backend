@@ -166,8 +166,10 @@ export async function saveEmailMarketingLead(input = {}) {
   const sistema = String(input.sistema || '').trim();
   const producto = String(input.producto || '').trim();
   const bienvenidaEnviada = Boolean(input.bienvenidaEnviada);
+  const syncToSheet = Boolean(input.syncToSheet);
+  const sheetSyncKey = syncToSheet && codigo ? `${email}:${codigo}` : '';
 
-  const lead = await Lead.findOneAndUpdate(
+  let lead = await Lead.findOneAndUpdate(
     { email },
     {
       $set: {
@@ -190,22 +192,34 @@ export async function saveEmailMarketingLead(input = {}) {
     { new: true, upsert: true, runValidators: true }
   ).lean();
 
-  try {
-    await appendLeadEventToSheet({
-      eventName: 'EmailCapture_Subscribe',
-      email,
-      nombre,
-      telefono,
-      codigo,
-      tipo: tipo || 'Newsletter',
-      ubicacion,
-      sistema,
-      producto: producto || 'Email Marketing',
-      estado: 'Nuevo',
-      bienvenidaEnviada: bienvenidaEnviada ? 'Si' : '',
-    });
-  } catch (error) {
-    console.warn('[EmailMkt] No se pudo guardar la suscripcion en Google Sheets:', error.message);
+  if (syncToSheet && sheetSyncKey && lead.sheetSyncKey !== sheetSyncKey) {
+    const syncClaim = await Lead.findOneAndUpdate(
+      { email, sheetSyncKey: { $ne: sheetSyncKey } },
+      { $set: { sheetSyncKey } },
+      { new: true }
+    ).lean();
+
+    if (syncClaim) {
+      lead = syncClaim;
+
+      try {
+        await appendLeadEventToSheet({
+          eventName: 'EmailCapture_Subscribe',
+          email,
+          nombre,
+          telefono,
+          codigo,
+          tipo: tipo || 'Newsletter',
+          ubicacion,
+          sistema,
+          producto: producto || 'Email Marketing',
+          estado: 'Nuevo',
+          bienvenidaEnviada: bienvenidaEnviada ? 'Si' : '',
+        });
+      } catch (error) {
+        console.warn('[EmailMkt] No se pudo guardar la suscripcion en Google Sheets:', error.message);
+      }
+    }
   }
 
   return serializeLeadRecipient(lead);

@@ -43,6 +43,7 @@ router.post('/subscribe', async (req, res, next) => {
     const lead = await saveEmailMarketingLead({
       ...(req.body || {}),
       source: req.body?.source || 'email_capture',
+      syncToSheet: true,
     });
 
     return res.status(201).json({ ok: true, lead });

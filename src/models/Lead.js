@@ -24,6 +24,11 @@ const leadSchema = new mongoose.Schema({
     default: '',
     trim: true,
   },
+  sheetSyncKey: {
+    type: String,
+    default: '',
+    trim: true,
+  },
   abVariant: {
     type: String,
     default: '',
