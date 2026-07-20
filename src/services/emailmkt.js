@@ -5,7 +5,7 @@ import CampaignSend from '../models/CampaignSend.js';
 import EmailTemplate from '../models/EmailTemplate.js';
 import Lead from '../models/Lead.js';
 import WorldCupUser from '../models/WorldCupUser.js';
-import { getSheetRows } from './sheets.js';
+import { appendLeadEventToSheet, getSheetRows } from './sheets.js';
 
 function getEmailConfig() {
   return {
@@ -158,20 +158,29 @@ export async function saveEmailMarketingLead(input = {}) {
 
   await ensureMongoConnection();
 
+  const codigo = String(input.codigo || '').trim();
+  const source = String(input.source || 'website').trim();
+  const promoId = String(input.promoId || '').trim();
+  const tipo = String(input.tipo || '').trim();
+  const ubicacion = String(input.ubicacion || '').trim();
+  const sistema = String(input.sistema || '').trim();
+  const producto = String(input.producto || '').trim();
+  const bienvenidaEnviada = Boolean(input.bienvenidaEnviada);
+
   const lead = await Lead.findOneAndUpdate(
     { email },
     {
       $set: {
         nombre,
         telefono,
-        codigo: String(input.codigo || '').trim(),
-        source: String(input.source || 'website').trim(),
-        promoId: String(input.promoId || '').trim(),
-        tipo: String(input.tipo || '').trim(),
-        ubicacion: String(input.ubicacion || '').trim(),
-        sistema: String(input.sistema || '').trim(),
-        producto: String(input.producto || '').trim(),
-        bienvenidaEnviada: Boolean(input.bienvenidaEnviada),
+        codigo,
+        source,
+        promoId,
+        tipo,
+        ubicacion,
+        sistema,
+        producto,
+        bienvenidaEnviada,
         unsubscribed: false,
       },
       $setOnInsert: {
@@ -180,6 +189,24 @@ export async function saveEmailMarketingLead(input = {}) {
     },
     { new: true, upsert: true, runValidators: true }
   ).lean();
+
+  try {
+    await appendLeadEventToSheet({
+      eventName: 'EmailCapture_Subscribe',
+      email,
+      nombre,
+      telefono,
+      codigo,
+      tipo: tipo || 'Newsletter',
+      ubicacion,
+      sistema,
+      producto: producto || 'Email Marketing',
+      estado: 'Nuevo',
+      bienvenidaEnviada: bienvenidaEnviada ? 'Si' : '',
+    });
+  } catch (error) {
+    console.warn('[EmailMkt] No se pudo guardar la suscripcion en Google Sheets:', error.message);
+  }
 
   return serializeLeadRecipient(lead);
 }
@@ -586,4 +613,5 @@ export async function sendEmailMarketingCampaign(campaignInput = {}) {
 
   return result;
 }
+
 
