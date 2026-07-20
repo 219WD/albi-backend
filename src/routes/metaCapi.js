@@ -190,14 +190,15 @@ const handleCapiEvent = async (req, res, next) => {
     const result = await metaResponse.json().catch(() => ({}));
 
     const leadEmail = normalizeEmail(normalizedCustomData?.email || browserUserData?.em || browserUserData?.email);
-    if (leadEmail) {
+    const isPromoEvent = String(eventName || '').startsWith('Promo_');
+    if (leadEmail && !isPromoEvent) {
       try {
         await saveEmailMarketingLead({
           email: leadEmail,
           nombre: normalizedCustomData?.nombre || browserUserData?.nombre,
           telefono: normalizedCustomData?.telefono || normalizedCustomData?.phone || browserUserData?.ph,
           codigo: normalizedCustomData?.codigo,
-          source: String(eventName || '').startsWith('Promo_') ? 'promo' : 'meta_capi',
+          source: 'meta_capi',
           promoId: normalizedCustomData?.promo_id,
           tipo: normalizedCustomData?.tipo,
           ubicacion: normalizedCustomData?.ubicacion,
